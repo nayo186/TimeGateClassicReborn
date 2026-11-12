@@ -1,0 +1,188 @@
+///////////////////////////////////////////////////////////////////////////////
+// Alone in the Dark: Classic Reborn
+// Based on FITD by yaz0r and AloneInTheDarkReHaunted, released under GPL
+//
+// Game controls (see controls.h)
+///////////////////////////////////////////////////////////////////////////////
+
+#include "controls.h"
+#include "common.h"
+#include "touchControls.h"
+
+#include <algorithm>
+#include <cmath>
+
+// A trigger counts as pressed past half its travel; a stick direction past
+// this much after the dead zone (as before the rebuild)
+static const float kTriggerPressed = 0.5f;
+static const float kStickPressed = 0.3f;
+
+static std::vector<std::vector<InputBinding>>& bindingTable()
+{
+    static std::vector<std::vector<InputBinding>> table;
+    if (table.empty())
+    {
+        table.resize(kGameActionCount);
+        for (int i = 0; i < kGameActionCount; i++)
+            table[i] = defaultBindings((GameAction)i);
+    }
+    return table;
+}
+
+const std::vector<InputBinding>& controlsBindings(GameAction action)
+{
+    return bindingTable()[(int)action];
+}
+
+void controlsSetBindings(GameAction action, const std::vector<InputBinding>& bindings)
+{
+    bindingTable()[(int)action] = bindings;
+}
+
+void controlsResetDefaults()
+{
+    for (int i = 0; i < kGameActionCount; i++)
+        bindingTable()[i] = defaultBindings((GameAction)i);
+}
+
+ControlsAnalog& controlsAnalog()
+{
+    static ControlsAnalog analog;
+    return analog;
+}
+
+static ControlsLeftStick s_leftStick;
+
+const ControlsLeftStick& controlsLeftStick()
+{
+    return s_leftStick;
+}
+
+static bool isLeftStickAxis(int axis)
+{
+    return axis == SDL_GAMEPAD_AXIS_LEFTX || axis == SDL_GAMEPAD_AXIS_LEFTY;
+}
+
+static bool isStickAxis(int axis)
+{
+    return axis == SDL_GAMEPAD_AXIS_LEFTX || axis == SDL_GAMEPAD_AXIS_LEFTY ||
+           axis == SDL_GAMEPAD_AXIS_RIGHTX || axis == SDL_GAMEPAD_AXIS_RIGHTY;
+}
+
+// A stick axis from -1 to 1 after the dead zone, sensitivity and inversion,
+// from the controller or the on-screen one (touchControls.cpp), whichever is
+// pushed further
+static float stickValue(SDL_Gamepad* gamepad, SDL_GamepadAxis axis)
+{
+    const ControlsAnalog& analog = controlsAnalog();
+    float value = gamepad ? SDL_GetGamepadAxis(gamepad, axis) / 32768.0f : 0.0f;
+    const float touch = touchPadAxis(axis);
+    if (std::fabs(touch) > std::fabs(value))
+        value = touch;
+    if (std::fabs(value) < analog.deadzone)
+        return 0.0f;
+    const float sign = (value > 0.0f) ? 1.0f : -1.0f;
+    value = sign * (std::fabs(value) - analog.deadzone) / (1.0f - analog.deadzone);
+    value *= analog.sensitivity;
+    if (value > 1.0f) value = 1.0f;
+    if (value < -1.0f) value = -1.0f;
+    if (analog.invertY && (axis == SDL_GAMEPAD_AXIS_LEFTY || axis == SDL_GAMEPAD_AXIS_RIGHTY))
+        value = -value;
+    return value;
+}
+
+static bool isDirection(GameAction action)
+{
+    return action == GameAction::Up || action == GameAction::Down ||
+           action == GameAction::Left || action == GameAction::Right;
+}
+
+static bool bindingHeld(const InputBinding& binding, GameAction action, const bool* keyboard, int keyCount, SDL_Gamepad* gamepad,
+                        bool skipLeftStick = false)
+{
+    switch (binding.kind)
+    {
+    case InputBinding::Kind::Key:
+        return binding.code >= 0 && binding.code < keyCount && keyboard[binding.code];
+    case InputBinding::Kind::PadButton:
+        // The controller or the on-screen one (touchControls.cpp)
+        return (gamepad && SDL_GetGamepadButton(gamepad, (SDL_GamepadButton)binding.code)) || touchPadButton(binding.code);
+    case InputBinding::Kind::PadAxis:
+    {
+        if (isStickAxis(binding.code))
+        {
+            if (skipLeftStick && isLeftStickAxis(binding.code))
+                return false;
+            const float value = stickValue(gamepad, (SDL_GamepadAxis)binding.code);
+            return binding.positive ? (value > kStickPressed) : (value < -kStickPressed);
+        }
+        // Trigger: 0 released to 32767 fully pressed
+        const float value = (std::max)(gamepad ? SDL_GetGamepadAxis(gamepad, (SDL_GamepadAxis)binding.code) / 32767.0f : 0.0f,
+                                       touchPadAxis(binding.code));
+        return binding.positive ? (value > kTriggerPressed) : (value < -kTriggerPressed);
+    }
+    }
+    return false;
+}
+
+static bool actionHeld(GameAction action, const bool* keyboard, int keyCount, SDL_Gamepad* gamepad)
+{
+    for (const InputBinding& binding : controlsBindings(action))
+        if (bindingHeld(binding, action, keyboard, keyCount, gamepad))
+            return true;
+    return false;
+}
+
+bool controlsActionHeld(GameAction action, const bool* keyboard, int keyCount, SDL_Gamepad* gamepad)
+{
+    return actionHeld(action, keyboard, keyCount, gamepad);
+}
+
+// The JoyD direction bits of every input but the left stick
+static int directionsWithoutLeftStick(const bool* keyboard, int keyCount, SDL_Gamepad* gamepad)
+{
+    static const GameAction kDirections[4] = { GameAction::Up, GameAction::Down, GameAction::Left, GameAction::Right };
+    int bits = 0;
+    for (int d = 0; d < 4; d++)
+        for (const InputBinding& binding : controlsBindings(kDirections[d]))
+            if (bindingHeld(binding, kDirections[d], keyboard, keyCount, gamepad, true))
+                bits |= 1 << d;
+    return bits;
+}
+
+static void readLeftStick(const bool* keyboard, int keyCount, SDL_Gamepad* gamepad)
+{
+    s_leftStick = ControlsLeftStick();
+    if (!controlsAnalog().modernStick)
+        return;
+    const float x = stickValue(gamepad, SDL_GAMEPAD_AXIS_LEFTX);
+    const float y = stickValue(gamepad, SDL_GAMEPAD_AXIS_LEFTY);
+    if (std::sqrt(x * x + y * y) <= kStickPressed)
+        return;
+    s_leftStick.active = true;
+    s_leftStick.x = x;
+    s_leftStick.y = y;
+    s_leftStick.otherDirections = directionsWithoutLeftStick(keyboard, keyCount, gamepad);
+}
+
+void controlsUpdate(const bool* keyboard, int keyCount, SDL_Gamepad* gamepad)
+{
+    auto held = [&](GameAction action) { return actionHeld(action, keyboard, keyCount, gamepad); };
+    readLeftStick(keyboard, keyCount, gamepad);
+
+    // JoyD bits: 1 up, 2 down, 4 left, 8 right, 0x40 run (core/track.cpp)
+    if (held(GameAction::Up))             JoyD |= 0x01;
+    if (held(GameAction::Down))           JoyD |= 0x02;
+    if (held(GameAction::Left))           JoyD |= 0x04;
+    if (held(GameAction::Right))          JoyD |= 0x08;
+    if (held(GameAction::Run))            JoyD |= 0x40;
+
+    if (held(GameAction::Action))
+        Click = 1;
+
+    // The 1992 key codes: Tab (AITD3's map), Esc, Enter (Enter wins over
+    // Esc, as before)
+    if (held(GameAction::Map))     key = 0x0F;
+    if (held(GameAction::Cancel))  key = 0x1B;
+    if (held(GameAction::Confirm)) key = 0x1C;
+}

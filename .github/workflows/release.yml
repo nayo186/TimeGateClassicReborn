@@ -1,0 +1,103 @@
+# Builds the players' packages of Time Gate: Classic Reborn when a release is
+# published and attaches them to the release. Same steps as on a local PC:
+# tools/makeRelease.ps1 -Edition timegate (Windows), and tools/makeRelease.sh
+# (Linux) and tools/makeRelease-macos.sh (macOS) with
+# CLASSIC_REBORN_EDITION=timegate: Release build, without the development
+# tools, C++ runtime inside the executables, only the launcher, the game,
+# README.md, LICENSE, the music's soundfont and the fonts' licences in the
+# package.
+#
+# To publish a version: create a release on GitHub with a tag like
+# v0.1.0-alpha.1; TimeGateClassicReborn-0.1.0-alpha.1-windows-x64.zip,
+# TimeGateClassicReborn-0.1.0-alpha.1-linux-x64.tar.gz and
+# TimeGateClassicReborn-0.1.0-alpha.1-macos.tar.gz appear in it when the
+# builds end. It can also be run by hand for an existing tag.
+
+name: Release zip
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag (e.g. v0.1.0-alpha.1)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Build and pack
+        shell: pwsh
+        run: |
+          $version = $env:TAG.TrimStart('v')
+          ./tools/makeRelease.ps1 -Version $version -Edition timegate
+
+      - name: Attach the zip to the release
+        shell: pwsh
+        run: |
+          $version = $env:TAG.TrimStart('v')
+          gh release upload $env:TAG "release/TimeGateClassicReborn-$version-windows-x64.zip" --clobber
+
+  # Ubuntu 22.04: the oldest system the package is built on is the oldest it
+  # runs on (Ubuntu 22.04, Mint 21, Debian 12 and newer)
+  linux:
+    runs-on: ubuntu-22.04
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Install the build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build pkg-config \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev \
+            libxfixes-dev libxinerama-dev libxtst-dev libwayland-dev libxkbcommon-dev \
+            wayland-protocols libdecor-0-dev libgl1-mesa-dev libegl1-mesa-dev \
+            libgles2-mesa-dev libdrm-dev libgbm-dev libasound2-dev libpulse-dev \
+            libpipewire-0.3-dev libudev-dev libdbus-1-dev libibus-1.0-dev
+
+      - name: Build and pack
+        run: CLASSIC_REBORN_EDITION=timegate bash tools/makeRelease.sh "${TAG#v}"
+
+      - name: Attach the package to the release
+        run: gh release upload "$TAG" "release/TimeGateClassicReborn-${TAG#v}-linux-x64.tar.gz" --clobber
+
+  # macOS 11 or newer, one program for Apple Silicon and Intel (experimental:
+  # built and started on GitHub's Macs, played by players with a Mac)
+  macos:
+    runs-on: macos-15
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Install the build tools
+        run: brew install ninja
+
+      - name: Build and pack
+        run: CLASSIC_REBORN_EDITION=timegate bash tools/makeRelease-macos.sh "${TAG#v}"
+
+      - name: Attach the package to the release
+        run: gh release upload "$TAG" "release/TimeGateClassicReborn-${TAG#v}-macos.tar.gz" --clobber

@@ -1,0 +1,105 @@
+///////////////////////////////////////////////////////////////////////////////
+// Alone In The Dark Re-Haunted
+// Based on FITD by yaz0r, Re-haunted is released under GPL
+//
+// Launch options: command-line parameters passed by the launcher
+///////////////////////////////////////////////////////////////////////////////
+
+#include "common.h"
+#include "consoleLog.h"
+#include "settings.h"
+#include "launchOptions.h"
+#include "coreHooks.h"
+#include "languagePack.h"
+#include "languageFolder.h"
+#include <algorithm>
+#include <cctype>
+
+LaunchOptions g_launchOptions;
+
+static std::string toLower(std::string s)
+{
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+    return s;
+}
+
+static std::string toUpper(std::string s)
+{
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return (char)std::toupper(c); });
+    return s;
+}
+
+void parseLaunchOptions(int argc, char* argv[])
+{
+    for (int i = 1; i + 1 < argc; i++)
+    {
+        std::string arg = argv[i];
+        if (arg == "--game")
+        {
+            g_launchOptions.game = toLower(argv[++i]);
+        }
+        else if (arg == "--lang")
+        {
+            g_launchOptions.language = toUpper(argv[++i]);
+        }
+    }
+
+    printf(MAIN_TAG "Launch options: game=%s lang=%s\n",
+        g_launchOptions.game.empty() ? "(default)" : g_launchOptions.game.c_str(),
+        g_launchOptions.language.empty() ? "(saved)" : g_launchOptions.language.c_str());
+}
+
+void applyLaunchOptions()
+{
+    // --lang only applies to this session: the saved language in
+    // g_settings stays untouched (the launcher owns it), so a config
+    // save during the game never overwrites the launcher's choice.
+
+    // Game: Alone in the Dark 1, Jack in the Dark, AITD2 or AITD3 (platform/gameFolder.cpp
+    // already entered its folder; detectGame recognises it by its files)
+    if (!g_launchOptions.game.empty() && g_launchOptions.game != "aitd1" && g_launchOptions.game != "jack" &&
+        g_launchOptions.game != "aitd2" && g_launchOptions.game != "aitd3" && g_launchOptions.game != "timegate")
+    {
+        printf(MAIN_WARN "--game %s is not supported yet, starting with the data in the working directory" CON_RESET "\n",
+            g_launchOptions.game.c_str());
+    }
+
+    // Language: launcher choice first, then the saved one; the PAK must exist
+    std::string language = g_launchOptions.language;
+    if (language.empty())
+        language = toUpper(g_settings.gameData.language);
+
+    // Time Gate: its texts are FRANCAIS.PAK in every edition; the language
+    // chosen in the launcher is a folder Languages/<name>/ over the installed
+    // data, or the installed one itself
+#ifdef CLASSIC_REBORN_EDITION_TIMEGATE
+    const bool timeGate = true;   // this edition always opens Time Gate
+#else
+    const bool timeGate = g_launchOptions.game == "timegate";
+#endif
+    if (timeGate)
+    {
+        if (!language.empty() && language != kTimeGateInstalledLanguage && selectTimeGateLanguagePack(language))
+            printf(MAIN_OK "Language folder: %s\n", languagePackFolder().c_str());
+        language = "FRANCAIS";
+    }
+
+    if (!language.empty())
+    {
+        // AITD3: a language from the player's CD, in Languages/<name>/ of the
+        // working folder (its texts, the data that goes with them, its narrator)
+        if (g_launchOptions.game == "aitd3" && selectLanguagePack(language))
+            printf(MAIN_OK "Language folder: %s\n", languagePackFolder().c_str());
+
+        if (dataFileExists((language + ".PAK").c_str()))
+        {
+            languageNameString = language;
+            printf(MAIN_OK "Language: %s\n", language.c_str());
+        }
+        else
+        {
+            printf(MAIN_WARN "Language file %s.PAK not found, using the first available language" CON_RESET "\n",
+                language.c_str());
+        }
+    }
+}

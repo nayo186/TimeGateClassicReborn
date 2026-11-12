@@ -1,0 +1,3462 @@
+///////////////////////////////////////////////////////////////////////////////
+// Alone In The Dark Re-Haunted
+// Copyright (C) 2026 Infogrames / Spacefarer Retro Remasters LLC
+// Based on FITD by yaz0r, Re-haunted is released under GPL
+// Author: Jake Jackson (jake@spacefarergames.com)
+//
+// Life script interpreter and AI behavior engine
+///////////////////////////////////////////////////////////////////////////////
+
+#include <string>
+#include <stdio.h>
+
+#include "common.h"
+#include "settings.h"
+#include "coreHooks.h"
+#include "consoleLog.h"
+#include "hybrid.h"
+#include "nativeLife.h"
+#include "lifeSafety.h"
+#include "vibration.h"
+#include "timeGateVideo.h"
+#include "timeGateSound.h"
+
+// 100 as a new game sets it: a loaded game does not run that script
+int groundLevel = 100;
+s16 specialTable[4] = { 144, 192, 48, 112 };
+
+// Sparks of a shot that hits (special object 5)
+static const int kShotSparks = 10;
+
+static const char* getLifeMacroName(int macro)
+{
+    switch (macro)
+    {
+    case LM_DO_MOVE: return "DO_MOVE";
+    case LM_ANIM_ONCE: return "ANIM_ONCE";
+    case LM_ANIM_ALL_ONCE: return "ANIM_ALL_ONCE";
+    case LM_BODY: return "BODY";
+    case LM_IF_EGAL: return "IF_EGAL";
+    case LM_IF_DIFFERENT: return "IF_DIFFERENT";
+    case LM_IF_SUP_EGAL: return "IF_SUP_EGAL";
+    case LM_IF_SUP: return "IF_SUP";
+    case LM_IF_INF_EGAL: return "IF_INF_EGAL";
+    case LM_IF_INF: return "IF_INF";
+    case LM_GOTO: return "GOTO";
+    case LM_RETURN: return "RETURN";
+    case LM_END: return "END";
+    case LM_ANIM_REPEAT: return "ANIM_REPEAT";
+    case LM_ANIM_MOVE: return "ANIM_MOVE";
+    case LM_MOVE: return "MOVE";
+    case LM_HIT: return "HIT";
+    case LM_MESSAGE: return "MESSAGE";
+    case LM_MESSAGE_VALUE: return "MESSAGE_VALUE";
+    case LM_VAR: return "VAR";
+    case LM_INC: return "INC";
+    case LM_DEC: return "DEC";
+    case LM_ADD: return "ADD";
+    case LM_SUB: return "SUB";
+    case LM_LIFE_MODE: return "LIFE_MODE";
+    case LM_SWITCH: return "SWITCH";
+    case LM_CASE: return "CASE";
+    case LM_CAMERA: return "CAMERA";
+    case LM_START_CHRONO: return "START_CHRONO";
+    case LM_MULTI_CASE: return "MULTI_CASE";
+    case LM_FOUND: return "FOUND";
+    case LM_LIFE: return "LIFE";
+    case LM_DELETE: return "DELETE";
+    case LM_TAKE: return "TAKE";
+    case LM_IN_HAND: return "IN_HAND";
+    case LM_READ: return "READ";
+    case LM_ANIM_SAMPLE: return "ANIM_SAMPLE";
+    case LM_SPECIAL: return "SPECIAL";
+    case LM_DO_REAL_ZV: return "DO_REAL_ZV";
+    case LM_SAMPLE: return "SAMPLE";
+    case LM_TYPE: return "TYPE";
+    case LM_GAME_OVER: return "GAME_OVER";
+    case LM_MANUAL_ROT: return "MANUAL_ROT";
+    case LM_RND_FREQ: return "RND_FREQ";
+    case LM_MUSIC: return "MUSIC";
+    case LM_SET_BETA: return "SET_BETA";
+    case LM_DO_ROT_ZV: return "DO_ROT_ZV";
+    case LM_STAGE: return "STAGE";
+    case LM_FOUND_NAME: return "FOUND_NAME";
+    case LM_FOUND_FLAG: return "FOUND_FLAG";
+    case LM_FOUND_LIFE: return "FOUND_LIFE";
+    case LM_CAMERA_TARGET: return "CAMERA_TARGET";
+    case LM_DROP: return "DROP";
+    case LM_FIRE: return "FIRE";
+    case LM_TEST_COL: return "TEST_COL";
+    case LM_FOUND_BODY: return "FOUND_BODY";
+    case LM_SET_ALPHA: return "SET_ALPHA";
+    case LM_STOP_BETA: return "STOP_BETA";
+    case LM_DO_MAX_ZV: return "DO_MAX_ZV";
+    case LM_PUT: return "PUT";
+    case LM_C_VAR: return "C_VAR";
+    case LM_DO_NORMAL_ZV: return "DO_NORMAL_ZV";
+    case LM_DO_CARRE_ZV: return "DO_CARRE_ZV";
+    case LM_SAMPLE_THEN: return "SAMPLE_THEN";
+    case LM_LIGHT: return "LIGHT";
+    case LM_SHAKING: return "SHAKING";
+    case LM_INVENTORY: return "INVENTORY";
+    case LM_FOUND_WEIGHT: return "FOUND_WEIGHT";
+    case LM_UP_COOR_Y: return "UP_COOR_Y";
+    case LM_SPEED: return "SPEED";
+    case LM_PUT_AT: return "PUT_AT";
+    case LM_DEF_ZV: return "DEF_ZV";
+    case LM_HIT_OBJECT: return "HIT_OBJECT";
+    case LM_GET_HARD_CLIP: return "GET_HARD_CLIP";
+    case LM_ANGLE: return "ANGLE";
+    case LM_REP_SAMPLE: return "REP_SAMPLE";
+    case LM_THROW: return "THROW";
+    case LM_WATER: return "WATER";
+    case LM_PICTURE: return "PICTURE";
+    case LM_STOP_SAMPLE: return "STOP_SAMPLE";
+    case LM_NEXT_MUSIC: return "NEXT_MUSIC";
+    case LM_FADE_MUSIC: return "FADE_MUSIC";
+    case LM_STOP_HIT_OBJECT: return "STOP_HIT_OBJECT";
+    case LM_COPY_ANGLE: return "COPY_ANGLE";
+    case LM_END_SEQUENCE: return "END_SEQUENCE";
+    case LM_SAMPLE_THEN_REPEAT: return "SAMPLE_THEN_REPEAT";
+    case LM_WAIT_GAME_OVER: return "WAIT_GAME_OVER";
+    case LM_GET_MATRICE: return "GET_MATRICE";
+    case LM_STAGE_LIFE: return "STAGE_LIFE";
+    case LM_CONTINUE_TRACK: return "CONTINUE_TRACK";
+    case LM_ANIM_RESET: return "ANIM_RESET";
+    case LM_RESET_MOVE_MANUAL: return "RESET_MOVE_MANUAL";
+    case LM_PLUIE: return "PLUIE";
+    case LM_ANIM_HYBRIDE_ONCE: return "ANIM_HYBRIDE_ONCE";
+    case LM_ANIM_HYBRIDE_REPEAT: return "ANIM_HYBRIDE_REPEAT";
+    case LM_MODIF_C_VAR: return "MODIF_C_VAR";
+    case LM_CALL_INVENTORY: return "CALL_INVENTORY";
+    case LM_BODY_RESET: return "BODY_RESET";
+    case LM_DEL_INVENTORY: return "DEL_INVENTORY";
+    case LM_SET_INVENTORY: return "SET_INVENTORY";
+    case LM_PLAY_SEQUENCE: return "PLAY_SEQUENCE";
+    case LM_2D_ANIM_SAMPLE: return "2D_ANIM_SAMPLE";
+    case LM_SET_GROUND: return "SET_GROUND";
+    case LM_PROTECT: return "PROTECT";
+    case LM_DEF_ABS_ZV: return "DEF_ABS_ZV";
+    case LM_DEF_SEQUENCE_SAMPLE: return "DEF_SEQUENCE_SAMPLE";
+    case LM_READ_ON_PICTURE: return "READ_ON_PICTURE";
+    case LM_FIRE_UP_DOWN: return "FIRE_UP_DOWN";
+    case LM_DO_ROT_CLUT: return "DO_ROT_CLUT";
+    case LM_STOP_CLUT: return "STOP_CLUT";
+    case LM_IF_IN: return "IF_IN";
+    case LM_IF_OUT: return "IF_OUT";
+    case LM_SET_VOLUME_SAMPLE: return "SET_VOLUME_SAMPLE";
+    case LM_FADE_IN_MUSIC: return "FADE_IN_MUSIC";
+    case LM_SET_MUSIC_VOLUME: return "SET_MUSIC_VOLUME";
+    case LM_MUSIC_AND_LOOP: return "MUSIC_AND_LOOP";
+    case LM_MUSIC_THEN: return "MUSIC_THEN";
+    case LM_MUSIC_THEN_LOOP: return "MUSIC_THEN_LOOP";
+    case LM_START_FADE_IN_MUSIC: return "START_FADE_IN_MUSIC";
+    case LM_START_FADE_IN_MUSIC_THEN: return "START_FADE_IN_MUSIC_THEN";
+    case LM_START_FADE_IN_MUSIC_LOOP: return "START_FADE_IN_MUSIC_LOOP";
+    case LM_FADE_OUT_MUSIC_STOP: return "FADE_OUT_MUSIC_STOP";
+    case LM_MUSIC_ALTER_TEMPO: return "MUSIC_ALTER_TEMPO";
+    case LM_REP_SAMPLE_N_TIME: return "REP_SAMPLE_N_TIME";
+    case LM_REP_SEQUENCE_SAMPLE: return "REP_SEQUENCE_SAMPLE";
+    case LM_STOP_SEQUENCE_SAMPLE: return "STOP_SEQUENCE_SAMPLE";
+    default: return "UNKNOWN";
+    }
+}
+
+int numSequenceParam = 0;
+
+// AITD3's full-screen pictures (palette 0-63): colours of at most 2 are
+// black. "The day after" has a box in (2,1,0) around its text, near black
+// on a VGA monitor and seen on a modern screen; GOG's DOSBox (output
+// overlay) shows it black too (BUGS.md T6)
+static void blackenNearBlack(palette_t& palette)
+{
+    for (int i = 0; i < 256; i++)
+        if (palette[i][0] <= 2 && palette[i][1] <= 2 && palette[i][2] <= 2)
+            palette[i][0] = palette[i][1] = palette[i][2] = 0;
+}
+
+sequenceParamStruct sequenceParams[NUM_MAX_SEQUENCE_PARAM];
+
+void resetRotateParam(void)
+{
+    currentProcessedActorPtr->rotate.numSteps = 0;
+}
+
+void throwObj(int animThrow, int frameThrow, int arg_4, int objToThrowIdx, int throwRotated, int throwForce, int animNext)
+{
+    if (InitAnim(animThrow, 2, animNext))
+    {
+        currentProcessedActorPtr->animActionANIM = animThrow;
+        currentProcessedActorPtr->animActionFRAME = frameThrow;
+        currentProcessedActorPtr->animActionType = 6;
+        currentProcessedActorPtr->hotPointID = arg_4;
+        // forget the hand point of the previous action (BUGS.md V13)
+        currentProcessedActorPtr->hotPoint.x = 0;
+        currentProcessedActorPtr->hotPoint.y = 0;
+        currentProcessedActorPtr->hotPoint.z = 0;
+        currentProcessedActorPtr->animActionParam = objToThrowIdx;
+        currentProcessedActorPtr->hitForce = throwForce;
+
+        if (!throwRotated)
+        {
+            ListWorldObjets[objToThrowIdx].gamma -= 0x100;
+        }
+
+        ListWorldObjets[objToThrowIdx].foundFlag |= 0x1000;
+    }
+}
+
+void put(int x, int y, int z, int room, int stage, int alpha, int beta, int gamma, int idx)
+{
+    tWorldObject* objPtr = &ListWorldObjets[idx];
+
+    objPtr->x = x;
+    objPtr->y = y;
+    objPtr->z = z;
+
+    objPtr->room = room;
+    objPtr->stage = stage;
+
+    objPtr->alpha = alpha;
+    objPtr->beta = beta;
+    objPtr->gamma = gamma;
+
+    DeleteInventoryObjet(idx);
+
+    objPtr->foundFlag |= 0x4000;
+
+    /*  FlagGenereActiveList = 1;
+    FlagRefreshAux2 = 1; */
+}
+
+void drop(int worldIdx, int worldSource)
+{
+    // AITD2 looks for room first: the card over the maze's flagstone stays in the inventory (BUGS.md A28)
+    if (g_gameId == AITD2 || g_gameId == AITD3)
+        dropAITD2(worldIdx, worldSource);
+    else
+        PutAtObjet(worldIdx, worldSource);
+}
+
+void fire(int fireAnim, int X, int Y, int Z, int hitForce, int nextAnim)
+{
+    printf(LIFE_TAG "fire() called: fireAnim=%d, shootFrame=%d, emitPoint=%d, zvSize=%d, hitForce=%d, nextAnim=%d\n",
+        fireAnim, X, Y, Z, hitForce, nextAnim);
+
+    if (InitAnim(fireAnim, 2, nextAnim))
+    {
+        printf(LIFE_OK "  -> InitAnim SUCCESS, setting up actor for firing\n");
+
+        currentProcessedActorPtr->animActionANIM = fireAnim;
+        currentProcessedActorPtr->animActionFRAME = X;
+        currentProcessedActorPtr->animActionType = 4;
+        currentProcessedActorPtr->animActionParam = Z;
+        currentProcessedActorPtr->hotPointID = Y;
+        currentProcessedActorPtr->hitForce = hitForce;
+
+        printf(LIFE_TAG "  -> Actor %d set to animActionType 4 (WAIT_TIR_ANIM)\n", currentProcessedActorIdx);
+    }
+    else
+    {
+        printf(LIFE_WARN "  -> InitAnim FAILED, gun cannot fire" CON_RESET "\n");
+    }
+}
+
+int randRange(int min, int max)
+{
+    if(max <= min)
+        return min;
+    return((rand() % (max - min)) + min);
+}
+
+int InitSpecialObjet(int mode, int X, int Y, int Z, int stage, int room, int alpha, int beta, int gamma, ZVStruct* zvPtr)
+{
+    s16 localSpecialTable[4];
+    memcpy(localSpecialTable, specialTable, 8);
+
+    tObject* currentActorPtr = ListObjets.data();
+
+    int i;
+    for (i = 0; i < NUM_MAX_OBJECT; i++) // count the number of active actors
+    {
+        if (currentActorPtr->indexInWorld == -1)
+            break;
+        currentActorPtr++;
+    }
+
+    if (i == NUM_MAX_OBJECT) // no free actor entry, abort
+    {
+        return(-1);
+    }
+
+    currentActorPtr->objectType = AF_SPECIAL;
+    currentActorPtr->indexInWorld = -2;
+    currentActorPtr->life = -1;
+    currentActorPtr->lifeMode = 2; // TODO: probably incorrect betweem AITD1/2
+    currentActorPtr->bodyNum = 0;
+    currentActorPtr->worldX = currentActorPtr->roomX = X;
+    currentActorPtr->worldY = currentActorPtr->roomY = Y;
+    currentActorPtr->worldZ = currentActorPtr->roomZ = Z;
+    currentActorPtr->stage = stage;
+    currentActorPtr->room = room;
+
+    if (currentRoom != room)
+    {
+        currentActorPtr->worldX -= (s16)((roomDataTable[currentRoom].worldX - roomDataTable[room].worldX) * 10);
+        currentActorPtr->worldY += (s16)((roomDataTable[currentRoom].worldY - roomDataTable[room].worldY) * 10);
+        currentActorPtr->worldZ += (s16)((roomDataTable[currentRoom].worldZ - roomDataTable[room].worldZ) * 10);
+    }
+
+    currentActorPtr->alpha = alpha;
+    currentActorPtr->beta = beta;
+    currentActorPtr->gamma = gamma;
+    currentActorPtr->stepX = 0;
+    currentActorPtr->stepY = 0;
+    currentActorPtr->stepZ = 0;
+    currentActorPtr->numOfFrames = 0;
+    currentActorPtr->END_FRAME = 0;
+
+    ZVStruct* actorZvPtr = nullptr;
+    if (zvPtr)
+    {
+        actorZvPtr = &currentActorPtr->zv;
+        CopyZV(zvPtr, actorZvPtr);
+    }
+
+    switch (mode)
+    {
+    case 0: // evaporate
+    {
+        char* flowPtr;
+        int j;
+
+        actorZvPtr->ZVX1 -= X;
+        actorZvPtr->ZVX2 -= X;
+        actorZvPtr->ZVY1 -= Y;
+        actorZvPtr->ZVY2 -= Y;
+        actorZvPtr->ZVZ1 -= Z;
+        actorZvPtr->ZVZ2 -= Z;
+
+        currentActorPtr->frame = HQ_Malloc(HQ_Memory, 304);
+
+        flowPtr = HQ_PtrMalloc(HQ_Memory, currentActorPtr->frame);
+
+        if (!flowPtr)
+        {
+            currentActorPtr->indexInWorld = -1;
+            return(-1);
+        }
+
+        currentActorPtr->ANIM = mode;
+
+        *(s16*)flowPtr = localSpecialTable[rand() % 3]; // type ? color ?
+        flowPtr += 2;
+        *(s16*)flowPtr = 30; // num of points
+        flowPtr += 2;
+
+
+        for (j = 0; j < 30; j++)
+        {
+            *(s16*)flowPtr = randRange(actorZvPtr->ZVX1, actorZvPtr->ZVX2); //X
+            flowPtr += 2;
+            *(s16*)flowPtr = randRange(actorZvPtr->ZVY1, actorZvPtr->ZVY2); //Y
+            flowPtr += 2;
+            *(s16*)flowPtr = randRange(actorZvPtr->ZVZ1, actorZvPtr->ZVZ2); //Z
+            flowPtr += 2;
+        }
+
+        for (j = 0; j < 30; j++)
+        {
+            *(s16*)flowPtr = randRange(150, 300); // ?
+            flowPtr += 2;
+            *(s16*)flowPtr = randRange(30, 80); // ?
+            flowPtr += 2;
+        }
+
+        actorZvPtr->ZVX1 = X - 10;
+        actorZvPtr->ZVX2 = X + 10;
+        actorZvPtr->ZVY1 = Y;
+        actorZvPtr->ZVY2 = Y - 1;
+        actorZvPtr->ZVZ1 = Z - 10;
+        actorZvPtr->ZVZ2 = Z + 10;
+
+        currentActorPtr->END_FRAME = 60; // lifetime in frames
+        break;
+    }
+    case 1: // blood flow
+    {
+        char* flowPtr;
+        int j;
+
+        // header (color + count) + 20 points * (X,Y,Z + velocity,lifetime) * s16
+        currentActorPtr->frame = HQ_Malloc(HQ_Memory, 4 + 20 * 5 * 2);
+
+        flowPtr = HQ_PtrMalloc(HQ_Memory, currentActorPtr->frame);
+
+        if (!flowPtr)
+        {
+            currentActorPtr->indexInWorld = -1;
+            return(-1);
+        }
+
+        currentActorPtr->ANIM = mode;
+
+        *(s16*)flowPtr = 144; // red color for blood
+        flowPtr += 2;
+        *(s16*)flowPtr = 20; // num of points
+        flowPtr += 2;
+
+        for (j = 0; j < 20; j++)
+        {
+            *(s16*)flowPtr = randRange(-60, 60); //X offset (wide splatter)
+            flowPtr += 2;
+            *(s16*)flowPtr = randRange(-15, 15); //Y offset (flatter initial spread)
+            flowPtr += 2;
+            *(s16*)flowPtr = randRange(-60, 60); //Z offset (wide splatter)
+            flowPtr += 2;
+        }
+
+        for (j = 0; j < 20; j++)
+        {
+            *(s16*)flowPtr = randRange(100, 200); // velocity
+            flowPtr += 2;
+            *(s16*)flowPtr = randRange(20, 50); // lifetime
+            flowPtr += 2;
+        }
+
+        currentActorPtr->zv.ZVX1 = X - 15;
+        currentActorPtr->zv.ZVX2 = X + 15;
+        currentActorPtr->zv.ZVY1 = Y - 15;
+        currentActorPtr->zv.ZVY2 = Y + 15;
+        currentActorPtr->zv.ZVZ1 = Z - 15;
+        currentActorPtr->zv.ZVZ2 = Z + 15;
+
+        currentActorPtr->END_FRAME = 25; // lifetime in frames (fast spray)
+        break;
+    }
+    case 2: // bullet hole / impact
+    {
+        currentActorPtr->ANIM = mode;
+        currentActorPtr->frame = 0;
+
+        // Small impact marker with short lifetime
+        currentActorPtr->zv.ZVX1 = X - 5;
+        currentActorPtr->zv.ZVX2 = X + 5;
+        currentActorPtr->zv.ZVY1 = Y - 5;
+        currentActorPtr->zv.ZVY2 = Y + 5;
+        currentActorPtr->zv.ZVZ1 = Z - 5;
+        currentActorPtr->zv.ZVZ2 = Z + 5;
+
+        currentActorPtr->END_FRAME = 10; // lifetime in frames
+        break;
+    }
+    case 3: // muzzle flash
+    {
+        currentActorPtr->ANIM = mode;
+        currentActorPtr->frame = 0;
+
+        // Brief flash at weapon emit point
+        currentActorPtr->zv.ZVX1 = X - 8;
+        currentActorPtr->zv.ZVX2 = X + 8;
+        currentActorPtr->zv.ZVY1 = Y - 8;
+        currentActorPtr->zv.ZVY2 = Y + 8;
+        currentActorPtr->zv.ZVZ1 = Z - 8;
+        currentActorPtr->zv.ZVZ2 = Z + 8;
+
+        currentActorPtr->END_FRAME = 5; // lifetime in frames
+        break;
+    }
+    case 4: // cigar smoke (AITD1): one cloud around its cigars, AffSmoke in core/sceneDraw.cpp
+    {
+        // A small block: the special objects free theirs when deleted
+        currentActorPtr->frame = HQ_Malloc(HQ_Memory, 4);
+        if (!HQ_PtrMalloc(HQ_Memory, currentActorPtr->frame))
+        {
+            currentActorPtr->indexInWorld = -1;
+            return(-1);
+        }
+
+        currentActorPtr->ANIM = mode;
+        // The cigars it comes from: the cloud goes when they go (put out with the jug)
+        currentActorPtr->trackNumber = currentProcessedActorPtr ? currentProcessedActorPtr->indexInWorld : -1;
+
+        // A small box: the engine collides with it, and the cloud must not
+        // stop the player (the cough is by distance, AffSmoke)
+        currentActorPtr->zv.ZVX1 = X - 12;
+        currentActorPtr->zv.ZVX2 = X + 12;
+        currentActorPtr->zv.ZVY1 = Y - 12;
+        currentActorPtr->zv.ZVY2 = Y + 12;
+        currentActorPtr->zv.ZVZ1 = Z - 12;
+        currentActorPtr->zv.ZVZ2 = Z + 12;
+
+        currentActorPtr->END_FRAME = 0;   // lasts while its cigars exist
+
+        // As the original engine did: 1 while the cloud exists, so the
+        // cigars' script (life 427) does not start another one (BUGS.md C41).
+        // Only AITD1 has the variable (BUGS.md T12)
+        if (knownCVar(FOG_FLAG))
+            CVars[getCVarsIdx(FOG_FLAG)] = 1;
+        printf(LIFE_TAG "Cigar smoke started (object %d, room %d)\n", currentActorPtr->trackNumber, room);
+        break;
+    }
+    case 5: // sparks where a shot hits (AITD2; the original shows nothing, BUGS.md A7)
+    {
+        // header (colour + count), then each spark's position and speed
+        currentActorPtr->frame = HQ_Malloc(HQ_Memory, 4 + kShotSparks * 6 * 2);
+        char* flowPtr = HQ_PtrMalloc(HQ_Memory, currentActorPtr->frame);
+        if (!flowPtr)
+        {
+            currentActorPtr->indexInWorld = -1;
+            return(-1);
+        }
+
+        currentActorPtr->ANIM = mode;
+
+        s16* sparks = (s16*)flowPtr;
+        sparks[0] = 112; // the brightest yellow of AITD2's palette
+        sparks[1] = kShotSparks;
+        for (int j = 0; j < kShotSparks; j++)
+        {
+            s16* spark = sparks + 2 + j * 6;
+            spark[0] = spark[1] = spark[2] = 0;     // from the hit point
+            spark[3] = randRange(-12, 13);          // outward
+            spark[4] = randRange(-14, -4);          // and up (Y grows downward)
+            spark[5] = randRange(-12, 13);
+        }
+
+        currentActorPtr->zv.ZVX1 = X - 5;
+        currentActorPtr->zv.ZVX2 = X + 5;
+        currentActorPtr->zv.ZVY1 = Y - 5;
+        currentActorPtr->zv.ZVY2 = Y + 5;
+        currentActorPtr->zv.ZVZ1 = Z - 5;
+        currentActorPtr->zv.ZVZ2 = Z + 5;
+
+        currentActorPtr->END_FRAME = 18; // a third of a second
+        break;
+    }
+    default:
+    {
+        printf(LIFE_WARN "Unsupported case %d in InitSpecialObjet" CON_RESET "\n", mode);
+        currentActorPtr->indexInWorld = -1;
+        return(-1);
+    }
+    }
+
+    FlagGenereAffList = 1;
+    return(i);
+}
+
+void getHardClip()
+{
+    ZVStruct* zvPtr = &currentProcessedActorPtr->zv;
+    char* etageData = (char*)getRoomData(currentProcessedActorPtr->room);
+    s16 numEntry;
+    int i;
+
+    etageData += *(s16*)etageData;
+
+    numEntry = *(s16*)etageData;
+    etageData += 2;
+
+    for (i = 0; i < numEntry; i++)
+    {
+        ZVStruct zvCol;
+
+        zvCol.ZVX1 = READ_LE_S16(etageData + 0x00);
+        zvCol.ZVX2 = READ_LE_S16(etageData + 0x02);
+        zvCol.ZVY1 = READ_LE_S16(etageData + 0x04);
+        zvCol.ZVY2 = READ_LE_S16(etageData + 0x06);
+        zvCol.ZVZ1 = READ_LE_S16(etageData + 0x08);
+        zvCol.ZVZ2 = READ_LE_S16(etageData + 0x0A);
+
+        if (CubeIntersect(zvPtr, &zvCol))
+        {
+            hardClip.ZVX1 = zvCol.ZVX1;
+            hardClip.ZVX2 = zvCol.ZVX2;
+            hardClip.ZVY1 = zvCol.ZVY1;
+            hardClip.ZVY2 = zvCol.ZVY2;
+            hardClip.ZVZ1 = zvCol.ZVZ1;
+            hardClip.ZVZ2 = zvCol.ZVZ2;
+
+            return;
+        }
+
+        etageData += 16;
+    }
+
+    hardClip.ZVX1 = 32000;
+    hardClip.ZVX2 = -32000;
+    hardClip.ZVY1 = 32000;
+    hardClip.ZVY2 = -32000;
+    hardClip.ZVZ1 = 32000;
+    hardClip.ZVZ2 = -32000;
+}
+
+void animMove(int animStand, int animWalk, int animRun, int animStop, int animBackward, int animTurnRight, int animTurnLeft)
+{
+    if (currentProcessedActorPtr->speed == 5)
+    {
+        InitAnim(animRun, 1, -1);
+    }
+
+    if (currentProcessedActorPtr->speed == 4)
+    {
+        InitAnim(animWalk, 1, -1);
+    }
+
+    if (currentProcessedActorPtr->speed == -1) // backward
+    {
+        if (currentProcessedActorPtr->ANIM == animWalk)
+        {
+            InitAnim(animStand, 0, animBackward);
+        }
+        else
+            if (currentProcessedActorPtr->ANIM == animRun)
+            {
+                InitAnim(animStop, 0, animStand);
+            }
+            else
+            {
+                InitAnim(animBackward, 1, -1); // walk backward
+            }
+    }
+    if (currentProcessedActorPtr->speed == 0)
+    {
+        if ((currentProcessedActorPtr->ANIM == animWalk) || (currentProcessedActorPtr->ANIM == animRun))
+        {
+            InitAnim(animStop, 0, animStand);
+        }
+        else
+        {
+            if (currentProcessedActorPtr->direction == 0)
+            {
+                InitAnim(animStand, 1, -1);
+            }
+            if (currentProcessedActorPtr->direction == 1) // left
+            {
+                InitAnim(animTurnLeft, 0, animStand);
+            }
+            if (currentProcessedActorPtr->direction == -1) // right
+            {
+                InitAnim(animTurnRight, 0, animStand);
+            }
+            if (currentProcessedActorPtr->direction == 2) // quick turn left
+            {
+                InitAnim(animTurnLeft, 0, animStand);
+            }
+            if (currentProcessedActorPtr->direction == -2) // quick turn right
+            {
+                InitAnim(animTurnRight, 0, animStand);
+            }
+        }
+    }
+
+
+}
+
+void setStage(int newStage, int newRoomLocal, int X, int Y, int Z)
+{
+    int animX;
+    int animY;
+    int animZ;
+
+    currentProcessedActorPtr->stage = newStage;
+    currentProcessedActorPtr->room = newRoomLocal;
+
+    if (g_gameId != AITD1)
+    {
+        currentProcessedActorPtr->hardMat = -1;
+    }
+
+    animX = currentProcessedActorPtr->roomX + currentProcessedActorPtr->stepX;
+    animY = currentProcessedActorPtr->roomY + currentProcessedActorPtr->stepY;
+    animZ = currentProcessedActorPtr->roomZ + currentProcessedActorPtr->stepZ;
+
+    currentProcessedActorPtr->zv.ZVX1 += X - animX;
+    currentProcessedActorPtr->zv.ZVX2 += X - animX;
+
+    currentProcessedActorPtr->zv.ZVY1 += Y - animY;
+    currentProcessedActorPtr->zv.ZVY2 += Y - animY;
+
+    currentProcessedActorPtr->zv.ZVZ1 += Z - animZ;
+    currentProcessedActorPtr->zv.ZVZ2 += Z - animZ;
+
+    currentProcessedActorPtr->roomX = X;
+    currentProcessedActorPtr->roomY = Y;
+    currentProcessedActorPtr->roomZ = Z;
+
+    currentProcessedActorPtr->worldX = X;
+    currentProcessedActorPtr->worldY = Y;
+    currentProcessedActorPtr->worldZ = Z;
+
+    currentProcessedActorPtr->stepX = 0;
+    currentProcessedActorPtr->stepY = 0;
+    currentProcessedActorPtr->stepZ = 0;
+
+    if (currentCameraTargetActor == currentProcessedActorIdx)
+    {
+        if (newStage != g_currentFloor)
+        {
+            FlagChangeEtage = 1;
+            NewNumEtage = newStage;
+            NewNumSalle = newRoomLocal;
+        }
+        else
+        {
+            if (currentRoom != newRoomLocal)
+            {
+                FlagChangeSalle = 1;
+                NewNumSalle = newRoomLocal;
+            }
+        }
+    }
+    else
+    {
+        if (currentRoom != newRoomLocal)
+        {
+            currentProcessedActorPtr->worldX -= (s16)((roomDataTable[currentRoom].worldX - roomDataTable[newRoomLocal].worldX) * 10);
+            currentProcessedActorPtr->worldY += (s16)((roomDataTable[currentRoom].worldY - roomDataTable[newRoomLocal].worldY) * 10);
+            currentProcessedActorPtr->worldZ += (s16)((roomDataTable[currentRoom].worldZ - roomDataTable[newRoomLocal].worldZ) * 10);
+        }
+
+        //    FlagGenereActiveList = 1;
+    }
+}
+
+void setupRealZv(ZVStruct* zvPtr)
+{
+    zvPtr->ZVX1 = 32000;
+    zvPtr->ZVY1 = 32000;
+    zvPtr->ZVZ1 = 32000;
+    zvPtr->ZVX2 = -32000;
+    zvPtr->ZVY2 = -32000;
+    zvPtr->ZVZ2 = -32000;
+
+    for (int i = 0; i < numOfPoints; i++)
+    {
+        point3dStruct* ptr = &pointBuffer[i];
+        if (zvPtr->ZVX1 > ptr->x)
+        {
+            zvPtr->ZVX1 = ptr->x;
+        }
+        else if (zvPtr->ZVX2 < ptr->x)
+        {
+            zvPtr->ZVX2 = ptr->x;
+        }
+
+        if (zvPtr->ZVY1 > ptr->y)
+        {
+            zvPtr->ZVY1 = ptr->y;
+        }
+        else if (zvPtr->ZVY2 < ptr->y)
+        {
+            zvPtr->ZVY2 = ptr->y;
+        }
+
+        if (zvPtr->ZVZ1 > ptr->z)
+        {
+            zvPtr->ZVZ1 = ptr->z;
+        }
+        else
+        if (zvPtr->ZVZ2 < ptr->z)
+        {
+            zvPtr->ZVZ2 = ptr->z;
+        }
+    }
+}
+
+void doRealZv(tObject* actorPtr)
+{
+    ZVStruct* zvPtr;
+
+    computeScreenBox(0, 0, 0, actorPtr->alpha, actorPtr->beta, actorPtr->gamma, HQR_Get(HQ_Bodys, actorPtr->bodyNum));
+
+    zvPtr = &actorPtr->zv;
+
+    setupRealZv(zvPtr);
+
+    zvPtr->ZVX1 += actorPtr->roomX;
+    zvPtr->ZVX2 += actorPtr->roomX;
+    zvPtr->ZVY1 += actorPtr->roomY;
+    zvPtr->ZVY2 += actorPtr->roomY;
+    zvPtr->ZVZ1 += actorPtr->roomZ;
+    zvPtr->ZVZ2 += actorPtr->roomZ;
+    actorPtr->zvFollowsAnim = true;
+}
+
+#ifdef DEBUG
+char currentDebugLifeLine[1024 * 1024];
+
+void appendFormated(const char* format, ...)
+{
+    va_list argList;
+
+    va_start(argList, format);
+
+    char buff[256];
+    vsprintf(buff, format, argList);
+
+    va_end(argList);
+
+    strcat(currentDebugLifeLine, buff);
+}
+#endif
+
+// Time Gate: what each order reads after it (and after the object it acts
+// on, with 0x8000), as TIMEGATE.EXE's routines read it (table 0x2A590): W a
+// word, E an expression, J a jump, C MULTI_CASE's list, L a count and as many
+// expressions. Checked on all the 1158 scripts of LISTLIFE.PAK: every jump
+// lands on an order and every script ends on its last one (BUGS.md G37)
+static const char* const kTimeGateOrders[0x7B] = {
+    "", "WW", "WW", "E", "EEJ", "EEJ", "EEJ", "EEJ", "EEJ", "EEJ", "J", "", "", "W", "WWWWWWW", "WW",          // 00
+    "WWWWEW", "W", "WE", "W", "W", "WE", "WE", "W", "E", "WJ", "", "C", "W", "W", "E", "W",                  // 10
+    "E", "WW", "EWWW", "W", "", "EW", "W", "", "", "W", "WW", "WW", "", "WWWWW", "W", "W",                    // 20
+    "W", "W", "EW", "EWWWWWE", "W", "W", "WW", "", "WWWWWWWWW", "", "", "EWEW", "W", "W", "W", "W",          // 30
+    "WE", "WWWWWW", "WW", "WWW", "EW", "WWWWWWW", "", "WWEW", "W", "WWW", "WWW", "", "W", "EWEW", "", "",    // 40
+    "W", "", "WW", "", "", "WW", "WW", "WE", "", "EE", "", "W", "WWW", "EWW", "W", "",                        // 50
+    "WWWWWW", "L", "WWWWWWWW", "EWWWWWWEWW", "WWW", "", "EEEJ", "EEEJ", "", "WW", "", "", "WWW", "WW", "WW", "WWW", // 60
+    "WWW", "WWWWW", "WWWWWW", "WWWWW", "WW", "WW", "", "", "", "L", "",                                       // 70
+};
+
+// Time Gate: skips an expression as TIMEGATE.EXE reads it (evalVar, 29F40):
+// -1 and a constant, 0 and a variable, else its kind (with 0x8000, then an
+// object) and what some kinds read after it
+static void skipTimeGateExpression()
+{
+    const s16 kind = *(s16*)currentLifePtr;
+    currentLifePtr += 2;
+    if (kind == -1 || kind == 0)
+    {
+        currentLifePtr += 2;
+        return;
+    }
+    if (kind & 0x8000)
+        currentLifePtr += 2;
+    switch (kind & 0x7FFF)
+    {
+    case 0x0F: case 0x1D: case 0x21: case 0x22: case 0x23: case 0x25:
+        currentLifePtr += 2;
+        break;
+    case 0x26:
+        currentLifePtr += 4;
+        break;
+    case 0x11: case 0x13: case 0x2A:
+        skipTimeGateExpression();
+        break;
+    default:
+        break;
+    }
+}
+
+// Time Gate: skips what an order reads, without doing it (jumps not taken)
+static void skipTimeGateOrder(int order)
+{
+    if (order < 0 || order >= (int)(sizeof(kTimeGateOrders) / sizeof(kTimeGateOrders[0])))
+        return;
+    for (const char* kind = kTimeGateOrders[order]; *kind; kind++)
+    {
+        switch (*kind)
+        {
+        case 'W':
+        case 'J':
+            currentLifePtr += 2;
+            break;
+        case 'E':
+            skipTimeGateExpression();
+            break;
+        case 'C':
+        {
+            const s16 count = *(s16*)currentLifePtr;
+            currentLifePtr += 2 + count * 2 + 2;
+            break;
+        }
+        case 'L':
+        {
+            const s16 count = *(s16*)currentLifePtr;
+            currentLifePtr += 2;
+            for (int i = 0; i < count; i++)
+                skipTimeGateExpression();
+            break;
+        }
+        }
+    }
+}
+
+// AITD3: the scripts of the bullets and boxes of cartridges for Carnby's
+// Winchester set its bullets (vars[319]) to 10, say it is loaded and delete
+// the object, also when it was already full: the bullets were lost for
+// nothing. The other Winchester of the game (script 261) says it is already
+// loaded and keeps them; these do the same (BUGS.md T34)
+static const int kAitd3WinchesterReloads[] = { 734, 872, 873, 908, 944, 954, 955, 1090, 1220 };
+
+// The reload script that found the Winchester already full, -1 if none
+static int s_winchesterAlreadyLoaded = -1;
+
+static bool aitd3WinchesterAlreadyLoaded(int index, int value)
+{
+    if (g_gameId != AITD3 || index != 319 || value != 10 || vars[319] < 10)
+        return false;
+    for (int script : kAitd3WinchesterReloads)
+    {
+        if (script == currentLifeNum)
+            return true;
+    }
+    return false;
+}
+
+void processLife(int lifeNum, bool callFoundLife)
+{
+    int exitLife = 0;
+    //int switchVal = 0;
+    int var_6;
+    int switchVal = 0;
+
+    currentLifeActorIdx = currentProcessedActorIdx;
+    currentLifeActorPtr = currentProcessedActorPtr;
+    currentLifeNum = lifeNum;
+    s_winchesterAlreadyLoaded = -1;
+
+    currentLifePtr = HQR_Get(listLife, lifeNum);
+    assert(currentLifePtr);
+
+
+    // Run native C replacement if one is registered (safe-filter mode).
+    // Scripts not registered fall through to the bytecode interpreter + patch system.
+    if (g_settings.debug.enableNativeLifeScripts)
+    {
+        NativeLifeFunc nativeFunc = getNativeLifeScript(lifeNum);
+        if (nativeFunc)
+        {
+            if (g_settings.debug.logLifeScripts)
+                printf(LIFE_TAG "[NATIVE] Actor %d | Life %d" CON_RESET "\n", currentProcessedActorIdx, lifeNum);
+            nativeFunc(lifeNum, callFoundLife);
+            return;
+        }
+    }
+
+    while (!exitLife)
+    {
+        int lifeTempVar1;
+        int lifeTempVar2;
+        int lifeTempVar3;
+        int lifeTempVar4;
+        int lifeTempVar5;
+        int lifeTempVar6;
+        int lifeTempVar7;
+        int lifeTempVar8;
+        s16 currentOpcode;
+
+        var_6 = -1;
+
+        currentOpcode = *(s16*)(currentLifePtr);
+        currentLifePtr += 2;
+
+#ifdef DEBUG
+        strcpy(currentDebugLifeLine, "");
+#endif
+        appendFormated("%d:opcode: %02X: ", lifeNum, currentOpcode & 0xFFFF);
+
+        if (currentOpcode & 0x8000)
+        {
+            var_6 = *(s16*)(currentLifePtr);
+            currentLifePtr += 2;
+
+            if (var_6 == -1)
+            {
+                printf(LIFE_WARN "Unsupported newVar = -1" CON_RESET "\n");
+                assert(0);
+            }
+            else
+            {
+                currentProcessedActorIdx = ListWorldObjets[var_6].objIndex;
+
+                if (currentProcessedActorIdx != -1)
+                {
+                    currentProcessedActorPtr = &ListObjets[currentProcessedActorIdx];
+
+                    goto processOpcode;
+                }
+                else
+                {
+                    int opcodeLocated;
+
+                    if (g_gameId == AITD1)
+                    {
+                        opcodeLocated = AITD1LifeMacroTable[currentOpcode & 0x7FFF];
+                    }
+                    else
+                    {
+                        opcodeLocated = AITD2LifeMacroTable[currentOpcode & 0x7FFF];
+                    }
+
+                    if (g_settings.debug.logLifeScripts)
+                        printf(LIFE_TAG "Actor %d | Life %d | Opcode 0x%02X -> %s (not-in-floor)" CON_RESET "\n", currentProcessedActorIdx, lifeNum, currentOpcode & 0x7FFF, getLifeMacroName(opcodeLocated));
+
+                    switch (opcodeLocated)
+                    {
+                        ////////////////////////////////////////////////////////////////////////
+                    case LM_BODY:
+                    {
+                        ListWorldObjets[var_6].body = evalVar();
+                        break;
+                    }
+                    case LM_BODY_RESET:
+                    {
+                        ListWorldObjets[var_6].body = evalVar();
+                        ListWorldObjets[var_6].anim = evalVar();
+                        break;
+                    }
+                    case LM_TYPE:
+                    {
+                        lifeTempVar1 = (*(s16*)(currentLifePtr)) & TYPE_MASK;
+                        currentLifePtr += 2;
+
+                        lifeTempVar2 = ListWorldObjets[var_6].flags;
+
+                        ListWorldObjets[var_6].flags = (ListWorldObjets[var_6].flags & (~TYPE_MASK)) + lifeTempVar1;
+                        break;
+                    }
+                    ////////////////////////////////////////////////////////////////////////
+                    case LM_ANIM_ONCE:
+                    {
+                        ListWorldObjets[var_6].anim = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+                        ListWorldObjets[var_6].animInfo = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+                        ListWorldObjets[var_6].animType = ANIM_ONCE;
+                        if (g_gameId >= JACK)
+                            ListWorldObjets[var_6].frame = 0;
+                        break;
+                    }
+                    case LM_ANIM_REPEAT:
+                    {
+                        ListWorldObjets[var_6].anim = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+                        ListWorldObjets[var_6].animInfo = -1;
+                        ListWorldObjets[var_6].animType = ANIM_REPEAT;
+                        if (g_gameId >= JACK)
+                            ListWorldObjets[var_6].frame = 0;
+                        break;
+                    }
+                    case LM_ANIM_ALL_ONCE:
+                    {
+                        ListWorldObjets[var_6].anim = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+                        ListWorldObjets[var_6].animInfo = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+                        ListWorldObjets[var_6].animType = ANIM_ONCE | ANIM_UNINTERRUPTABLE;
+                        if (g_gameId >= JACK)
+                            ListWorldObjets[var_6].frame = 0;
+                        break;
+                    }
+                    case	LM_ANIM_RESET:
+                    {
+                        ASSERT(g_gameId >= JACK);
+                        ListWorldObjets[var_6].anim = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+                        ListWorldObjets[var_6].animInfo = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+                        ListWorldObjets[var_6].animType = ANIM_ONCE | ANIM_RESET;
+                        ListWorldObjets[var_6].frame = 0;
+                        break;
+                    }
+                    ////////////////////////////////////////////////////////////////////////
+                    case LM_MOVE: // MOVE
+                    {
+                        ListWorldObjets[var_6].trackMode = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+
+                        ListWorldObjets[var_6].trackNumber = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+
+                        ListWorldObjets[var_6].positionInTrack = 0;
+
+                        if (g_gameId > AITD1)
+                        {
+                            ListWorldObjets[var_6].mark = -1;
+                        }
+                        break;
+                    }
+                    case LM_ANGLE:
+                    {
+                        ListWorldObjets[var_6].alpha = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+
+                        ListWorldObjets[var_6].beta = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+
+                        ListWorldObjets[var_6].gamma = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+
+                        break;
+                    }
+                    case LM_STAGE: // stage
+                    {
+                        ListWorldObjets[var_6].stage = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+
+                        ListWorldObjets[var_6].room = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+
+                        ListWorldObjets[var_6].x = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+
+                        ListWorldObjets[var_6].y = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+
+                        ListWorldObjets[var_6].z = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+
+                        //FlagGenereActiveList = 1;
+
+                        break;
+                    }
+                    case LM_TEST_COL:
+                    {
+                        if (*(s16*)(currentLifePtr))
+                        {
+                            ListWorldObjets[var_6].flags |= 0x20;
+                        }
+                        else
+                        {
+                            ListWorldObjets[var_6].flags &= 0xFFDF;
+                        }
+
+                        currentLifePtr += 2;
+
+                        break;
+                    }
+                    ////////////////////////////////////////////////////////////////////////
+                    case LM_LIFE:
+                    {
+                        ListWorldObjets[var_6].life = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+                        break;
+                    }
+                    case LM_LIFE_MODE: // LIFE_MODE
+                    {
+                        lifeTempVar1 = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+
+
+                        if (lifeTempVar1 != ListWorldObjets[var_6].lifeMode)
+                        {
+                            ListWorldObjets[var_6].lifeMode = lifeTempVar1;
+                            //FlagGenereActiveList = 1;
+                        }
+                        break;
+                    }
+                    case LM_FOUND_NAME: // FOUND_NAME
+                    {
+                        ListWorldObjets[var_6].foundName = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+
+                        break;
+                    }
+                    case LM_FOUND_BODY: // FOUND_BODY
+                    {
+                        ListWorldObjets[var_6].foundBody = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+
+                        break;
+                    }
+                    case LM_FOUND_FLAG: // FOUND_FLAG
+                    {
+                        ListWorldObjets[var_6].foundFlag &= 0xE000;
+                        ListWorldObjets[var_6].foundFlag |= *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+
+                        break;
+                    }
+                    case LM_FOUND_WEIGHT:
+                    {
+                        ListWorldObjets[var_6].positionInTrack = *(s16*)(currentLifePtr);
+                        currentLifePtr += 2;
+
+                        break;
+                    }
+                    case  LM_START_CHRONO: // arrive in original interpreter too
+                    {
+                        break;
+                    }
+                    ////////////////////////////////////////////////////////////////////////
+                    default:
+                    {
+                        // Time Gate runs every order on a stand-in object
+                        // (TIMEGATE.EXE 2AD00); here those not written for an
+                        // object out of the floor are skipped with what they
+                        // read: left in the script, the rest went astray
+                        // (BUGS.md G37)
+                        if (g_gameId == TIMEGATE)
+                        {
+                            skipTimeGateOrder(currentOpcode & 0x7FFF);
+                            break;
+                        }
+                        printf(LIFE_WARN "Unsupported opcode %X when actor isn't in floor" CON_RESET "\n", currentOpcode & 0x7FFF);
+                        assert(0);
+                        break;
+                    }
+                    }
+                }
+            }
+        }
+        else
+        {
+            int opcodeLocated;
+        processOpcode:
+
+            if (g_gameId == AITD1)
+            {
+                opcodeLocated = AITD1LifeMacroTable[currentOpcode & 0x7FFF];
+            }
+            else
+            {
+                opcodeLocated = AITD2LifeMacroTable[currentOpcode & 0x7FFF];
+            }
+
+            if (g_settings.debug.logLifeScripts)
+                printf(LIFE_TAG "Actor %d | Life %d | Opcode 0x%02X -> %s" CON_RESET "\n", currentProcessedActorIdx, lifeNum, currentOpcode & 0x7FFF, getLifeMacroName(opcodeLocated));
+
+            switch (opcodeLocated)
+            {
+            case LM_BODY:
+            {
+                lifeTempVar1 = evalVar();
+
+                ListWorldObjets[currentProcessedActorPtr->indexInWorld].body = lifeTempVar1;
+
+                if (currentProcessedActorPtr->bodyNum != lifeTempVar1)
+                {
+                    currentProcessedActorPtr->bodyNum = lifeTempVar1;
+
+                    if (currentProcessedActorPtr->objectType & AF_ANIMATED)
+                    {
+                        if ((currentProcessedActorPtr->ANIM != -1) && (currentProcessedActorPtr->bodyNum != -1))
+                        {
+                            sAnimation* pAnim = HQR_Get(HQ_Anims, currentProcessedActorPtr->ANIM);
+
+                            if (g_gameId >= JACK)
+                            {
+                                /*                  if (bFlagDecal)
+                                gereDecal(); */
+                            }
+
+                            sBody* pBody = HQR_Get(HQ_Bodys, currentProcessedActorPtr->bodyNum);
+
+                            /*    if(gameId >= JACK)
+                            {
+                            setInterAnimObject2(currentProcessedActorPtr->FRAME, pAnim, pBody, TRUE, Objet->AnimDecal);
+                            }
+                            else */
+                            {
+                                SetInterAnimObjet(currentProcessedActorPtr->frame, pAnim, pBody);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // A still object keeps the pose of its last animation:
+                        // the ship's cannon, turned with an animation, went back
+                        // to its first side when the fuse gave it a new body,
+                        // which started in its rest pose (BUGS.md A53)
+                        if ((g_gameId == AITD2 || g_gameId == AITD3) && currentProcessedActorPtr->ANIM != -1 && lifeTempVar1 != -1)
+                        {
+                            SetAnimObjet(currentProcessedActorPtr->frame,
+                                HQR_Get(HQ_Anims, currentProcessedActorPtr->ANIM),
+                                HQR_Get(HQ_Bodys, lifeTempVar1));
+                        }
+                        FlagInitView = 1;
+                    }
+                }
+                break;
+            }
+            case LM_BODY_RESET:
+            {
+                appendFormated("LM_BODY_RESET ");
+
+                int param1 = evalVar("body");
+                int param2 = evalVar("anim");
+
+                ListWorldObjets[currentProcessedActorPtr->indexInWorld].body = param1;
+                ListWorldObjets[currentProcessedActorPtr->indexInWorld].anim = param2;
+
+                currentProcessedActorPtr->bodyNum = param1;
+
+                if (currentProcessedActorPtr->objectType & AF_ANIMATED)
+                {
+                    sAnimation* pAnim = HQR_Get(HQ_Anims, currentProcessedActorPtr->ANIM);
+
+                    if (g_gameId >= JACK)
+                    {
+                        /*                  if (bFlagDecal)
+                        gereDecal(); */
+                    }
+
+                    sBody* pBody = HQR_Get(HQ_Bodys, currentProcessedActorPtr->bodyNum);
+
+                    SetAnimObjet(0, pAnim, pBody);
+                    InitAnim(param2, 4, -1);
+                }
+                else
+                {
+                    FlagInitView = 1;
+                }
+                break;
+            }
+            case LM_DO_REAL_ZV:
+            {
+                appendFormated("LM_DO_REAL_ZV ");
+                doRealZv(currentProcessedActorPtr);
+                break;
+            }
+            case LM_DEF_ZV: // DEF_ZV
+            {
+                appendFormated("LM_DEF_ZV ");
+                currentProcessedActorPtr->zvFollowsAnim = false;
+                currentProcessedActorPtr->zv.ZVX1 = currentProcessedActorPtr->roomX + *(s16*)currentLifePtr + currentProcessedActorPtr->stepX;
+                currentLifePtr += 2;
+                currentProcessedActorPtr->zv.ZVX2 = currentProcessedActorPtr->roomX + *(s16*)currentLifePtr + currentProcessedActorPtr->stepX;
+                currentLifePtr += 2;
+
+                currentProcessedActorPtr->zv.ZVY1 = currentProcessedActorPtr->roomY + *(s16*)currentLifePtr + currentProcessedActorPtr->stepY;
+                currentLifePtr += 2;
+                currentProcessedActorPtr->zv.ZVY2 = currentProcessedActorPtr->roomY + *(s16*)currentLifePtr + currentProcessedActorPtr->stepY;
+                currentLifePtr += 2;
+
+                currentProcessedActorPtr->zv.ZVZ1 = currentProcessedActorPtr->roomZ + *(s16*)currentLifePtr + currentProcessedActorPtr->stepZ;
+                currentLifePtr += 2;
+                currentProcessedActorPtr->zv.ZVZ2 = currentProcessedActorPtr->roomZ + *(s16*)currentLifePtr + currentProcessedActorPtr->stepZ;
+                currentLifePtr += 2;
+
+                break;
+            }
+            case LM_DEF_ABS_ZV:
+            {
+                appendFormated("LM_DEF_ABS_ZV ");
+                currentProcessedActorPtr->zvFollowsAnim = false;
+                currentProcessedActorPtr->zv.ZVX1 = *(s16*)currentLifePtr;
+                currentLifePtr += 2;
+                currentProcessedActorPtr->zv.ZVX2 = *(s16*)currentLifePtr;
+                currentLifePtr += 2;
+
+                currentProcessedActorPtr->zv.ZVY1 = *(s16*)currentLifePtr;
+                currentLifePtr += 2;
+                currentProcessedActorPtr->zv.ZVY2 = *(s16*)currentLifePtr;
+                currentLifePtr += 2;
+
+                currentProcessedActorPtr->zv.ZVZ1 = *(s16*)currentLifePtr;
+                currentLifePtr += 2;
+                currentProcessedActorPtr->zv.ZVZ2 = *(s16*)currentLifePtr;
+                currentLifePtr += 2;
+
+                break;
+            }
+            case LM_DO_ROT_ZV: // DO_ROT_ZV
+            {
+                appendFormated("LM_DO_ROT_ZV ");
+                currentProcessedActorPtr->zvFollowsAnim = false;
+                getZvRot(HQR_Get(HQ_Bodys, currentProcessedActorPtr->bodyNum), &currentProcessedActorPtr->zv,
+                    currentProcessedActorPtr->alpha,
+                    shownBetaAITD3(currentProcessedActorPtr),
+                    currentProcessedActorPtr->gamma);
+
+                currentProcessedActorPtr->zv.ZVX1 += currentProcessedActorPtr->roomX;
+                currentProcessedActorPtr->zv.ZVX2 += currentProcessedActorPtr->roomX;
+                currentProcessedActorPtr->zv.ZVY1 += currentProcessedActorPtr->roomY;
+                currentProcessedActorPtr->zv.ZVY2 += currentProcessedActorPtr->roomY;
+                currentProcessedActorPtr->zv.ZVZ1 += currentProcessedActorPtr->roomZ;
+                currentProcessedActorPtr->zv.ZVZ2 += currentProcessedActorPtr->roomZ;
+
+                break;
+            }
+            case LM_DO_MAX_ZV:
+            {
+                appendFormated("LM_DO_MAX_ZV ");
+                currentProcessedActorPtr->zvFollowsAnim = false;
+                getZvMax(HQR_Get(HQ_Bodys, currentProcessedActorPtr->bodyNum), &currentProcessedActorPtr->zv);
+
+                currentProcessedActorPtr->zv.ZVX1 += currentProcessedActorPtr->roomX;
+                currentProcessedActorPtr->zv.ZVX2 += currentProcessedActorPtr->roomX;
+                currentProcessedActorPtr->zv.ZVY1 += currentProcessedActorPtr->roomY;
+                currentProcessedActorPtr->zv.ZVY2 += currentProcessedActorPtr->roomY;
+                currentProcessedActorPtr->zv.ZVZ1 += currentProcessedActorPtr->roomZ;
+                currentProcessedActorPtr->zv.ZVZ2 += currentProcessedActorPtr->roomZ;
+
+                break;
+            }
+            case LM_DO_CARRE_ZV: // DO_CARRE_ZV
+            {
+                appendFormated("LM_DO_CARRE_ZV ");
+                currentProcessedActorPtr->zvFollowsAnim = false;
+                getZvCube(HQR_Get(HQ_Bodys, currentProcessedActorPtr->bodyNum), &currentProcessedActorPtr->zv);
+
+                currentProcessedActorPtr->zv.ZVX1 += currentProcessedActorPtr->roomX;
+                currentProcessedActorPtr->zv.ZVX2 += currentProcessedActorPtr->roomX;
+                currentProcessedActorPtr->zv.ZVY1 += currentProcessedActorPtr->roomY;
+                currentProcessedActorPtr->zv.ZVY2 += currentProcessedActorPtr->roomY;
+                currentProcessedActorPtr->zv.ZVZ1 += currentProcessedActorPtr->roomZ;
+                currentProcessedActorPtr->zv.ZVZ2 += currentProcessedActorPtr->roomZ;
+
+                break;
+            }
+            case LM_TYPE: // TYPE
+            {
+                appendFormated("LM_TYPE ");
+
+                lifeTempVar1 = readNextArgument("type") & AF_MASK;
+                lifeTempVar2 = currentProcessedActorPtr->objectType;
+
+                currentProcessedActorPtr->objectType = (currentProcessedActorPtr->objectType & ~AF_MASK) + lifeTempVar1;
+
+                if (g_gameId > AITD1)
+                {
+                    if (lifeTempVar2 & 1)
+                    {
+                        if (!(lifeTempVar1 & 1))
+                        {
+                            addActorToBgInscrust(currentProcessedActorIdx);
+                        }
+                    }
+
+                    if (lifeTempVar1 & 1)
+                    {
+                        if (!(lifeTempVar2 & 8))
+                        {
+                            removeFromBGIncrust(currentProcessedActorIdx);
+                        }
+                    }
+                }
+
+                break;
+            }
+            case LM_GET_HARD_CLIP: //GET_HARD_CLIP
+            {
+                appendFormated("LM_GET_HARD_CLIP ");
+                getHardClip();
+                break;
+            }
+            ////////////////////////////////////////////////////////////////////////
+            case LM_ANIM_ONCE:
+            {
+                appendFormated("LM_ANIM_ONCE ");
+
+                lifeTempVar1 = readNextArgument("Anim");
+                lifeTempVar2 = readNextArgument("Flags");
+
+                if (lifeTempVar1 == -1)
+                {
+                    currentProcessedActorPtr->ANIM = -1;
+                    currentProcessedActorPtr->newAnim = -2;
+                }
+                else
+                {
+                    InitAnim(lifeTempVar1, 0, lifeTempVar2);
+                }
+
+                break;
+            }
+            case LM_ANIM_REPEAT:
+            {
+                appendFormated("LM_ANIM_REPEAT ");
+                lifeTempVar1 = readNextArgument("Anim");
+
+                InitAnim(lifeTempVar1, 1, -1);
+
+                break;
+            }
+            case LM_ANIM_ALL_ONCE:
+            {
+                appendFormated("LM_ANIM_ALL_ONCE ");
+                lifeTempVar1 = readNextArgument("Anim");
+                lifeTempVar2 = readNextArgument("Flags");
+
+                // AITD3: Carnby hit while holding the whip (body 365, anim 892)
+                // went on to 649, the stance of another weapon, where the whip's
+                // script (1163) does nothing: the whip was stuck until he moved.
+                // Its stance is 650, as in the rest of script 647 (BUGS.md T31)
+                if (g_gameId == AITD3 && lifeTempVar1 == 892 && lifeTempVar2 == 649
+                    && currentProcessedActorPtr->bodyNum == 365)
+                    lifeTempVar2 = 650;
+
+                InitAnim(lifeTempVar1, 2, lifeTempVar2);
+
+                break;
+            }
+            case LM_ANIM_RESET:
+            {
+                appendFormated("LM_ANIM_RESET ");
+                int anim = readNextArgument("Anim");
+                int animFlag = readNextArgument("Flags");
+
+                if (anim == -1)
+                {
+                    currentProcessedActorPtr->ANIM = -1;
+                    currentProcessedActorPtr->newAnim = -2;
+                }
+                else
+                {
+                    InitAnim(anim, ANIM_ONCE | ANIM_RESET, animFlag);
+                }
+
+                break;
+            }
+            case LM_ANIM_HYBRIDE_ONCE:
+            {
+                appendFormated("LM_ANIM_HYBRIDE_ONCE ");
+
+                int anim = readNextArgument("Anim");
+                int body = readNextArgument("Body");
+
+                if ((currentProcessedActorPtr->ANIM != anim) || (currentProcessedActorPtr->bodyNum != body)) {
+                    currentProcessedActorPtr->ANIM = anim;
+                    currentProcessedActorPtr->bodyNum = body;
+                    currentProcessedActorPtr->memoTicks = timer;
+                    currentProcessedActorPtr->frame = 0;
+
+                    if ((currentProcessedActorPtr->ANIM != -1) && (currentProcessedActorPtr->bodyNum != -1)) {
+                        sHybrid* pHybrid = HQR_Get(HQ_Hybrides, currentProcessedActorPtr->ANIM);
+                        currentProcessedActorPtr->numOfFrames = pHybrid->animations[currentProcessedActorPtr->bodyNum].count;
+                        currentProcessedActorPtr->animInfo = -1;
+                        currentProcessedActorPtr->animType = ANIM_ONCE;
+                        currentProcessedActorPtr->objectType |= AF_OBJ_2D;
+                    }
+                    else {
+                        currentProcessedActorPtr->numOfFrames = 0;
+                        currentProcessedActorPtr->objectType = 0;
+                    }
+                }
+                break;
+            }
+            case LM_ANIM_HYBRIDE_REPEAT:
+            {
+                appendFormated("LM_ANIM_HYBRIDE_REPEAT ");
+
+                int anim = readNextArgument("Anim");
+                int body = readNextArgument("Body");
+
+                if ((currentProcessedActorPtr->ANIM != anim) || (currentProcessedActorPtr->bodyNum != body)) {
+                    currentProcessedActorPtr->ANIM = anim;
+                    currentProcessedActorPtr->bodyNum = body;
+                    currentProcessedActorPtr->memoTicks = timer;
+                    currentProcessedActorPtr->frame = 0;
+
+                    if ((currentProcessedActorPtr->ANIM != -1) && (currentProcessedActorPtr->bodyNum != -1)) {
+                        sHybrid* pHybrid = HQR_Get(HQ_Hybrides, currentProcessedActorPtr->ANIM);
+                        currentProcessedActorPtr->numOfFrames = pHybrid->animations[currentProcessedActorPtr->bodyNum].count;
+                        currentProcessedActorPtr->animInfo = -1;
+                        currentProcessedActorPtr->animType = ANIM_REPEAT;
+                        currentProcessedActorPtr->objectType |= AF_OBJ_2D;
+                    }
+                    else {
+                        currentProcessedActorPtr->numOfFrames = 0;
+                        currentProcessedActorPtr->objectType = 0;
+                    }
+                }
+                break;
+            }
+            ////////////////////////////////////////////////////////////////////////
+            case LM_HIT:
+            {
+                appendFormated("LM_HIT ");
+
+                lifeTempVar1 = readNextArgument("Anim");
+                lifeTempVar2 = readNextArgument("StartFrame");
+                lifeTempVar3 = readNextArgument("GroupNumber");
+                lifeTempVar4 = readNextArgument("HitBoxSize");
+                lifeTempVar5 = difficultyScriptForce(evalVar("HitForce"));
+                lifeTempVar6 = readNextArgument("NextAnim");
+
+                hit(lifeTempVar1, lifeTempVar2, lifeTempVar3, lifeTempVar4, lifeTempVar5, lifeTempVar6);
+
+                break;
+            }
+            case LM_FIRE: // FIRE
+            {
+                appendFormated("LM_FIRE ");
+                if (g_gameId == AITD1)
+                {
+                    int fireAnim;
+                    int shootFrame;
+                    int emitPoint;
+                    int zvSize;
+                    int hitForce;
+                    int nextAnim;
+
+                    fireAnim = readNextArgument("Anim");
+                    shootFrame = readNextArgument("Frame");
+                    emitPoint = readNextArgument("EmitPoint");
+                    zvSize = readNextArgument("ZVSize");
+                    hitForce = readNextArgument("Force");
+                    nextAnim = readNextArgument("NextAnim");
+
+                    fire(fireAnim, shootFrame, emitPoint, zvSize, hitForce, nextAnim);
+                }
+                else // use an emitter model
+                {
+                    int fireAnim;
+                    int shootFrame;
+                    int emitPoint;
+                    int emitModel;
+                    int zvSize;
+                    int hitForce;
+                    int nextAnim;
+
+                    fireAnim = evalVar("Anim");
+                    shootFrame = readNextArgument("Frame");
+                    emitPoint = readNextArgument("EmitPoint");
+                    emitModel = readNextArgument("EmitModel");
+                    zvSize = readNextArgument("ZVSize");
+                    hitForce = difficultyScriptForce(readNextArgument("Force"));
+                    nextAnim = evalVar();
+
+                    fire(fireAnim, shootFrame, emitPoint, zvSize, hitForce, nextAnim);
+                    currentProcessedActorPtr->fireAlpha = 0;
+                    // The kind of flash shown at the emit point when the shot leaves (DO_TIR, BUGS.md A9, A44)
+                    currentProcessedActorPtr->emitModel = emitModel;
+                    printf(LIFE_TAG "  -> emit model %d\n", emitModel);
+                }
+
+                break;
+            }
+            case LM_FIRE_UP_DOWN: // AITD3 only: FIRE with an angle up or down
+            {
+                // The balcony's gunman of the saloon shoots down at Carnby; it
+                // was skipped and he left without firing (AITD3.EXE 0xB850, the
+                // angle at +0xB4 of the object; BUGS.md T24)
+                appendFormated("LM_FIRE_UP_DOWN ");
+                const int fireAnim = evalVar("Anim");
+                const int shootFrame = readNextArgument("Frame");
+                const int emitPoint = readNextArgument("EmitPoint");
+                const int emitModel = readNextArgument("EmitModel");
+                const int zvSize = readNextArgument("ZVSize");
+                const int hitForce = readNextArgument("Force");
+                const int fireAlpha = readNextArgument("Alpha");
+                const int nextAnim = evalVar();
+                // Time Gate: then two words (TIMEGATE.EXE 2B8BC; BUGS.md G37)
+                if (g_gameId == TIMEGATE)
+                    currentLifePtr += 4;
+
+                fire(fireAnim, shootFrame, emitPoint, zvSize, hitForce, nextAnim);
+                currentProcessedActorPtr->emitModel = emitModel;
+                currentProcessedActorPtr->fireAlpha = fireAlpha;
+                break;
+            }
+            case LM_HIT_OBJECT: // HIT_OBJECT
+            {
+                appendFormated("LM_HIT_OBJECT ");
+
+                lifeTempVar1 = readNextArgument("Flags");
+                lifeTempVar2 = readNextArgument("Force");
+
+                currentProcessedActorPtr->animActionType = 8;
+                currentProcessedActorPtr->animActionParam = lifeTempVar1;
+                currentProcessedActorPtr->hitForce = lifeTempVar2;
+                currentProcessedActorPtr->hotPointID = -1;
+                break;
+            }
+            case LM_STOP_HIT_OBJECT: // cancel hit obj
+            {
+                appendFormated("LM_STOP_HIT_OBJECT ");
+                if (currentProcessedActorPtr->animActionType == 8)
+                {
+                    currentProcessedActorPtr->animActionType = 0;
+                    currentProcessedActorPtr->animActionParam = 0;
+                    currentProcessedActorPtr->hitForce = 0;
+                    currentProcessedActorPtr->hotPointID = -1;
+                }
+
+                break;
+            }
+            case LM_THROW: // throw
+            {
+                appendFormated("LM_THROW ");
+                lifeTempVar1 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                lifeTempVar2 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                lifeTempVar3 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                lifeTempVar4 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                lifeTempVar5 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                lifeTempVar6 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                lifeTempVar7 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                throwObj(lifeTempVar1, lifeTempVar2, lifeTempVar3, lifeTempVar4, lifeTempVar5, lifeTempVar6, lifeTempVar7);
+
+                break;
+            }
+            ////////////////////////////////////////////////////////////////////////
+            case LM_MOVE:
+            {
+                appendFormated("LM_MOVE ");
+                lifeTempVar1 = readNextArgument("TrackMode");
+                lifeTempVar2 = readNextArgument("TrackNumber");
+
+                InitDeplacement(lifeTempVar1, lifeTempVar2);
+
+                break;
+            }
+            case LM_RESET_MOVE_MANUAL:
+            {
+                appendFormated("LM_RESET_MOVE_MANUAL ");
+                resetRotateParam();
+                break;
+            }
+            case LM_CONTINUE_TRACK:
+            {
+                appendFormated("LM_CONTINUE_TRACK ");
+                char* ptr;
+
+                // Safety check: ensure trackNumber is valid
+                if (currentProcessedActorPtr->trackNumber < 0)
+                {
+                    break;
+                }
+
+                ptr = HQR_Get(listTrack, currentProcessedActorPtr->trackNumber);
+
+                // Safety check: ensure track data exists
+                if (!ptr)
+                {
+                    break;
+                }
+
+                ptr += currentProcessedActorPtr->positionInTrack * 2;
+
+                s16 trackCommand = *(s16*)ptr;
+
+                // Command 5 is a marker/waypoint that should be skipped
+                if (trackCommand == 5)
+                {
+                    currentProcessedActorPtr->positionInTrack++;
+                }
+                break;
+            }
+            case LM_DO_MOVE:
+            {
+                appendFormated("LM_DO_MOVE ");
+                processTrack();
+                break;
+            }
+            case LM_ANIM_MOVE:
+            {
+                appendFormated("LM_ANIM_MOVE ");
+                int animStand = readNextArgument("animStand");
+                int animWalk = readNextArgument("animWalk");
+                int animRun = readNextArgument("animRun");
+                int animStop = readNextArgument("animStop");
+                int animWalkBackward = readNextArgument("animWalkBackward");
+                int animTurnRight = readNextArgument("animTurnRight");
+                int animTurnLeft = readNextArgument("animTurnLeft");
+
+                animMove(animStand, animWalk, animRun, animStop, animWalkBackward, animTurnRight, animTurnLeft);
+
+                break;
+            }
+            case LM_MANUAL_ROT: // MANUAL_ROT
+            {
+                appendFormated("LM_MANUAL_ROT ");
+                if (g_gameId == AITD1)
+                {
+                    GereManualRot(240);
+                }
+                else
+                {
+                    GereManualRot(90);
+                }
+                break;
+            }
+            case LM_SET_BETA: // SET_BETA
+            {
+                appendFormated("LM_SET_BETA ");
+                lifeTempVar1 = readNextArgument("beta");
+                lifeTempVar2 = readNextArgument("speed");
+
+                if (currentProcessedActorPtr->beta != lifeTempVar1)
+                {
+                    if (currentProcessedActorPtr->rotate.numSteps == 0 || currentProcessedActorPtr->rotate.endValue != lifeTempVar1)
+                    {
+                        InitRealValue(currentProcessedActorPtr->beta, lifeTempVar1, lifeTempVar2, &currentProcessedActorPtr->rotate);
+                    }
+
+                    currentProcessedActorPtr->beta = updateActorRotation(&currentProcessedActorPtr->rotate);
+                }
+
+                break;
+            }
+            case LM_SET_ALPHA: // SET_ALPHA
+            {
+                appendFormated("LM_SET_ALPHA ");
+                lifeTempVar1 = readNextArgument("alpha");
+                lifeTempVar2 = readNextArgument("speed");
+
+                if (currentProcessedActorPtr->alpha != lifeTempVar1)
+                {
+                    if (currentProcessedActorPtr->rotate.numSteps == 0 || lifeTempVar1 != currentProcessedActorPtr->rotate.endValue)
+                    {
+                        InitRealValue(currentProcessedActorPtr->alpha, lifeTempVar1, lifeTempVar2, &currentProcessedActorPtr->rotate);
+                    }
+
+                    currentProcessedActorPtr->alpha = updateActorRotation(&currentProcessedActorPtr->rotate);
+                }
+
+                break;
+            }
+            case LM_ANGLE: // ANGLE
+            {
+                appendFormated("LM_ANGLE ");
+                currentProcessedActorPtr->alpha = readNextArgument("alpha");
+                currentProcessedActorPtr->beta = readNextArgument("beta");
+                currentProcessedActorPtr->gamma = readNextArgument("gamma");
+
+                break;
+            }
+            case LM_COPY_ANGLE:
+            {
+                appendFormated("LM_COPY_ANGLE ");
+                int object = readNextArgument("object");
+                int localObjectIndex = ListWorldObjets[object].objIndex;
+                if (localObjectIndex == -1) {
+                    currentProcessedActorPtr->alpha = ListWorldObjets[object].alpha;
+                    currentProcessedActorPtr->beta = ListWorldObjets[object].beta;
+                    currentProcessedActorPtr->gamma = ListWorldObjets[object].gamma;
+                }
+                else {
+                    currentProcessedActorPtr->alpha = ListObjets[localObjectIndex].alpha;
+                    currentProcessedActorPtr->beta = ListObjets[localObjectIndex].beta;
+                    currentProcessedActorPtr->gamma = ListObjets[localObjectIndex].gamma;
+                }
+                break;
+            }
+            case LM_STAGE: // STAGE
+            {
+                appendFormated("LM_STAGE ");
+                lifeTempVar1 = readNextArgument("newStage");
+                lifeTempVar2 = readNextArgument("newRoom");
+                lifeTempVar3 = readNextArgument("X");
+                lifeTempVar4 = readNextArgument("Y");
+                lifeTempVar5 = readNextArgument("Z");
+
+                setStage(lifeTempVar1, lifeTempVar2, lifeTempVar3, lifeTempVar4, lifeTempVar5);
+
+                break;
+            }
+            case LM_TEST_COL: // TEST_COL
+            {
+                appendFormated("LM_TEST_COL ");
+                lifeTempVar1 = readNextArgument();
+
+                if (lifeTempVar1)
+                {
+                    currentProcessedActorPtr->dynFlags |= 1;
+                }
+                else
+                {
+                    currentProcessedActorPtr->dynFlags &= ~1;
+                }
+
+                break;
+            }
+            case LM_UP_COOR_Y: // UP_COOR_Y
+            {
+                appendFormated("LM_UP_COOR_Y ");
+                InitRealValue(0, -2000, -1, &currentProcessedActorPtr->YHandler);
+                break;
+            }
+            ////////////////////////////////////////////////////////////////////////
+            case LM_LIFE: // LIFE
+            {
+                appendFormated("LM_LIFE ");
+                lifeTempVar1 = readNextArgument("newLife");
+                if (lifeTempVar1 != currentProcessedActorPtr->life)
+                {
+                    printf(LIFE_TAG "Object %d: life %d -> %d (script %d)\n", currentProcessedActorPtr->indexInWorld, currentProcessedActorPtr->life, lifeTempVar1, currentLifeNum);
+                    // AITD3: every death starts script 8, the journey to the
+                    // land of the dead (music 16, the inventory emptied)
+                    if (g_gameId == AITD3 && lifeTempVar1 == 8)
+                        vibrateOnDeath();
+                }
+                currentProcessedActorPtr->life = lifeTempVar1;
+                break;
+            }
+            case LM_STAGE_LIFE:
+            {
+                appendFormated("LM_STAGE_LIFE ");
+                ListWorldObjets[currentProcessedActorPtr->indexInWorld].floorLife = readNextArgument("stageLife");
+                break;
+            }
+            case LM_LIFE_MODE: // LIFE_MODE
+            {
+                appendFormated("LM_LIFE_MODE ");
+                lifeTempVar1 = readNextArgument("lifeMode");
+
+                if (g_gameId <= JACK)
+                {
+                    lifeTempVar2 = currentProcessedActorPtr->lifeMode;
+                }
+                else
+                {
+                    lifeTempVar2 = currentProcessedActorPtr->lifeMode & 3;
+                }
+
+                if (lifeTempVar1 != lifeTempVar2)
+                {
+                    currentProcessedActorPtr->lifeMode = lifeTempVar1;
+                    //FlagGenereActiveList = 1;
+                }
+                break;
+            }
+            case LM_DELETE: // DELETE
+            {
+                appendFormated("LM_DELETE ");
+                if (g_gameId <= JACK)
+                {
+                    lifeTempVar1 = readNextArgument("ObjectId");
+
+                }
+                else
+                {
+                    lifeTempVar1 = evalVar("ObjectId");
+                }
+
+                if (s_winchesterAlreadyLoaded == currentLifeNum)
+                {
+                    s_winchesterAlreadyLoaded = -1;
+                    break;
+                }
+
+                printf(LIFE_TAG "Object %d (life %d) deletes world object %d\n", currentProcessedActorIdx, currentLifeNum, lifeTempVar1);
+                deleteObject(lifeTempVar1);
+
+                if (ListWorldObjets[lifeTempVar1].foundBody != -1)
+                {
+                    if (g_gameId == AITD1) // TODO: check, really useful ?
+                    {
+                        ListWorldObjets[lifeTempVar1].foundFlag &= ~0x8000;
+                    }
+                    ListWorldObjets[lifeTempVar1].foundFlag |= 0x4000;
+                }
+
+                break;
+            }
+            case LM_SPECIAL: // SPECIAL
+            {
+                appendFormated("LM_SPECIAL ");
+                lifeTempVar1 = readNextArgument("type");
+
+                switch (lifeTempVar1)
+                {
+                case 0: // evaporate
+                {
+                    InitSpecialObjet(0,
+                        currentProcessedActorPtr->roomX + currentProcessedActorPtr->stepX,
+                        currentProcessedActorPtr->roomY + currentProcessedActorPtr->stepY,
+                        currentProcessedActorPtr->roomZ + currentProcessedActorPtr->stepZ,
+                        currentProcessedActorPtr->stage,
+                        currentProcessedActorPtr->room,
+                        currentProcessedActorPtr->alpha,
+                        currentProcessedActorPtr->beta,
+                        currentProcessedActorPtr->gamma,
+                        &currentProcessedActorPtr->zv);
+                    break;
+                }
+                case 1: // flow - spawn blood at the victim (current actor), not the hitter
+                {
+                    InitSpecialObjet(1,
+                        currentProcessedActorPtr->roomX + currentProcessedActorPtr->stepX + currentProcessedActorPtr->hotPoint.x,
+                        currentProcessedActorPtr->roomY + currentProcessedActorPtr->stepY + currentProcessedActorPtr->hotPoint.y,
+                        currentProcessedActorPtr->roomZ + currentProcessedActorPtr->stepZ + currentProcessedActorPtr->hotPoint.z,
+                        currentProcessedActorPtr->stage,
+                        currentProcessedActorPtr->room,
+                        0,
+                        -currentProcessedActorPtr->beta,
+                        0,
+                        NULL);
+
+                    break;
+                }
+                case 4: // cigar smoke
+                {
+                    InitSpecialObjet(4,
+                        currentProcessedActorPtr->roomX + currentProcessedActorPtr->stepX,
+                        currentProcessedActorPtr->roomY + currentProcessedActorPtr->stepY,
+                        currentProcessedActorPtr->roomZ + currentProcessedActorPtr->stepZ,
+                        currentProcessedActorPtr->stage,
+                        currentProcessedActorPtr->room,
+                        currentProcessedActorPtr->alpha,
+                        currentProcessedActorPtr->beta,
+                        currentProcessedActorPtr->gamma,
+                        &currentProcessedActorPtr->zv);
+                    break;
+                }
+                }
+                break;
+            }
+            ////////////////////////////////////////////////////////////////////////
+            case LM_START_CHRONO: //START_CHRONO
+            {
+                appendFormated("LM_START_CHRONO ");
+                startChrono(&currentProcessedActorPtr->CHRONO);
+                break;
+            }
+            ////////////////////////////////////////////////////////////////////////
+            case LM_FOUND: // FOUND
+            {
+                appendFormated("LM_FOUND ");
+                lifeTempVar1 = readNextArgument("ObjectId");
+
+                if (g_gameId == AITD1)
+                {
+                    FoundObjet(lifeTempVar1, 1);
+                }
+                else
+                {
+                    if (callFoundLife)
+                    {
+                        FoundObjet(lifeTempVar1, 2);
+                    }
+                    else
+                    {
+                        FoundObjet(lifeTempVar1, 1);
+                    }
+                }
+
+                break;
+            }
+            case LM_TAKE: // TAKE
+            {
+                appendFormated("LM_TAKE ");
+                // One argument, the object, in Time Gate too: it read four and
+                // took nothing, so the start's TAKE(35) TAKE(36) IN_HAND(-1)
+                // went by and the inventory stayed empty (BUGS.md G5)
+                lifeTempVar1 = readNextArgument("ObjectId");
+                take(lifeTempVar1);
+                break;
+            }
+            case LM_IN_HAND: // IN_HAND
+            {
+                appendFormated("LM_IN_HAND ");
+                if (g_gameId <= JACK)
+                {
+                    inHandTable[currentInventory] = *(s16*)(currentLifePtr);
+                    currentLifePtr += 2;
+                }
+                else
+                {
+                    inHandTable[currentInventory] = evalVar();
+                }
+                break;
+            }
+            case LM_DROP: // DROP
+            {
+                appendFormated("LM_DROP ");
+                lifeTempVar1 = evalVar();
+                lifeTempVar2 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                drop(lifeTempVar1, lifeTempVar2);
+
+                break;
+            }
+            case LM_PUT:
+            {
+                appendFormated("LM_PUT ");
+                int x;
+                int y;
+                int z;
+                int room;
+                int stage;
+                int alpha;
+                int beta;
+                int gamma;
+                int idx;
+
+                idx = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                x = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                y = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                z = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                room = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                stage = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                alpha = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                beta = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                gamma = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                put(x, y, z, room, stage, alpha, beta, gamma, idx);
+
+                break;
+            }
+            case LM_PUT_AT: // PUT_AT
+            {
+                appendFormated("LM_PUT_AT ");
+                int objIdx1;
+                int objIdx2;
+
+                objIdx1 = *(s16*)currentLifePtr;
+                currentLifePtr += 2;
+
+                // Time Gate: the object it goes to is an expression
+                // (TIMEGATE.EXE 2C184 calls evalVar): read as a word, it was
+                // -1, the mark of a constant, and the constant was taken for
+                // the next order; the script went astray and William stood
+                // still for ever by the showcase of the lasers' room (BUGS.md G36)
+                if (g_gameId == TIMEGATE)
+                {
+                    objIdx2 = evalVar();
+                }
+                else
+                {
+                    objIdx2 = *(s16*)currentLifePtr;
+                    currentLifePtr += 2;
+                }
+
+                PutAtObjet(objIdx1, objIdx2);
+                break;
+            }
+            case LM_FOUND_NAME: // FOUND_NAME
+            {
+                appendFormated("LM_FOUND_NAME ");
+                ListWorldObjets[currentProcessedActorPtr->indexInWorld].foundName = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                break;
+            }
+            case LM_FOUND_BODY: // FOUND_BODY
+            {
+                appendFormated("LM_FOUND_BODY ");
+                ListWorldObjets[currentProcessedActorPtr->indexInWorld].foundBody = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                break;
+            }
+            case LM_FOUND_FLAG: // FOUND_FLAG
+            {
+                appendFormated("LM_FOUND_FLAG ");
+                ListWorldObjets[currentProcessedActorPtr->indexInWorld].foundFlag &= 0xE000;
+                ListWorldObjets[currentProcessedActorPtr->indexInWorld].foundFlag |= *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                break;
+            }
+            case LM_FOUND_WEIGHT: // FOUND_WEIGHT
+            {
+                appendFormated("LM_FOUND_WEIGHT ");
+                ListWorldObjets[currentProcessedActorPtr->indexInWorld].positionInTrack = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                break;
+            }
+            case LM_FOUND_LIFE: // FOUND_LIFE
+            {
+                appendFormated("LM_FOUND_LIFE ");
+                ListWorldObjets[currentProcessedActorPtr->indexInWorld].foundLife = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                break;
+            }
+            case LM_READ: // READ
+            {
+                appendFormated("LM_READ ");
+                lifeTempVar1 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                lifeTempVar2 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                int vocIndex = -1;
+                if (g_gameId == AITD1)
+                {
+                    vocIndex = *(s16*)(currentLifePtr); // AITD1 CD VOC file index for voice-over
+                    currentLifePtr += 2;
+                }
+
+                printf(LIFE_TAG "READ: text %d, type %d (script %d)\n", lifeTempVar2 + 1, lifeTempVar1, currentLifeNum);
+                FadeOutPhys(0x20, 0);
+
+                readBook(lifeTempVar2 + 1, lifeTempVar1, vocIndex);
+
+                if (g_gameId == AITD1)
+                {
+                    // Short fade like the original (each DOS palette step was far
+                    // quicker than a frame; 4 here took over a second)
+                    FadeOutPhys(0x10, 0);
+                }
+
+                FlagInitView = 2;
+                printf(LIFE_TAG "READ: done, back to the game\n");
+
+                break;
+            }
+            case LM_READ_ON_PICTURE: // TODO
+            {
+                appendFormated("LM_READ_ON_PICTURE ");
+                lifeTempVar1 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                lifeTempVar2 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                lifeTempVar3 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                lifeTempVar4 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                lifeTempVar5 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                lifeTempVar6 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                lifeTempVar7 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                lifeTempVar8 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                int ropVocIndex = -1;
+                if (g_gameId == AITD1)
+                {
+                    ropVocIndex = *(s16*)(currentLifePtr);
+                    currentLifePtr += 2;
+                }
+
+                SaveTimerAnim();
+
+                FadeOutPhys(32, 0);
+                // The player's own picture replaces it, as for PICTURE: AITD2's
+                // story pictures with text kept the original (BUGS.md A33)
+                coreScreenPictureShown("ITD_RESS", lifeTempVar1);
+                LoadPak("ITD_RESS", lifeTempVar1, aux);
+                palette_t lpalette;
+                copyPalette(aux + 64000, lpalette);
+                // AITD3: the text colours over the picture's colours 0-15, which
+                // are placeholders (magenta); its texts use 15 (BUGS.md T17)
+                if (g_gameId == AITD3)
+                    textColoursAITD3(lpalette);
+                convertPaletteIfRequired(lpalette);
+                copyPalette(lpalette, currentGamePalette);
+                setPalette(lpalette);
+                turnPageFlag = false;
+
+                if (ropVocIndex >= 0)
+                    osystem_playVocByIndex(ropVocIndex);
+
+                // A 2D screen, as readBook: without it the frames and fades
+                // showed the 3D scene's picture, not the player's (BUGS.md A33)
+                osystem_suspendScreenEffects(true);
+                g_menuActive = true;
+                Lire(lifeTempVar2 + 1, lifeTempVar3, lifeTempVar4, lifeTempVar5, lifeTempVar6, 0, lifeTempVar7, lifeTempVar8);
+                g_menuActive = false;
+                osystem_suspendScreenEffects(false);
+
+                if (ropVocIndex >= 0)
+                    osystem_stopVO();
+                // AITD3: its narrator read the text; the CD goes back to the music
+                if (g_gameId == AITD3)
+                    endBookVoice();
+
+                FlagInitView = 2;
+
+                RestoreTimerAnim();
+
+                break;
+            }
+            ////////////////////////////////////////////////////////////////////////
+            case LM_ANIM_SAMPLE: // ANIM_SAMPLE
+            {
+                appendFormated("LM_ANIM_SAMPLE ");
+                lifeTempVar1 = evalVar();
+
+                // Time Gate: then the channel (TIMEGATE.EXE 2C48D)
+                int animSampleChannel = -1;
+                if (g_gameId == TIMEGATE)
+                {
+                    animSampleChannel = *(s16*)(currentLifePtr);
+                    currentLifePtr += 2;
+                }
+
+                lifeTempVar2 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                lifeTempVar3 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                if (currentProcessedActorPtr->END_FRAME != 0)
+                {
+                    if (currentProcessedActorPtr->ANIM == lifeTempVar2)
+                    {
+                        if (currentProcessedActorPtr->frame == lifeTempVar3)
+                        {
+                            if (g_gameId == TIMEGATE)
+                                playChannelSound(lifeTempVar1, animSampleChannel, false);
+                            else
+                                playSound(lifeTempVar1);
+
+                           
+                            //setSampleFreq(0);
+                        }
+                    }
+                }
+                break;
+            }
+            case	LM_2D_ANIM_SAMPLE:
+            {
+                appendFormated("LM_2D_ANIM_SAMPLE ");
+                int sampleNumber;
+                int animNumber;
+                int frameNumber;
+
+                sampleNumber = evalVar();
+                animNumber = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                frameNumber = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                printf(LIFE_TAG "LM_2D_ANIM_SAMPLE(sampleNumber %d, animNumber %d, frameNumber %d)\n", sampleNumber, animNumber, frameNumber);
+
+                break; // TODO: implement
+            }
+            case LM_SAMPLE:
+            {
+                appendFormated("LM_SAMPLE ");
+                int sampleNumber;
+
+                if (g_gameId == TIMEGATE)
+                {
+                    // Its channel next: a sample on a channel takes the
+                    // place of the one it had, the others go on (TIMEGATE.EXE
+                    // 2C574, 30BC0; BUGS.md G33)
+                    sampleNumber = evalVar();
+                    const int channel = readNextArgument();
+                    playChannelSound(sampleNumber, channel, false);
+                    break;
+                }
+                else if (g_gameId <= JACK)
+                {
+                    sampleNumber = evalVar();
+                }
+                else
+                {
+                    sampleNumber = *(s16*)(currentLifePtr);
+                    currentLifePtr += 2;
+                }
+
+                // AITD3: sample -1 stops the sound, as the loop the scripts
+                // started with REP_SAMPLE (the heartbeat in the dark, stopped
+                // by the lighter, script 966); it went on forever (BUGS.md T40)
+                if (g_gameId == AITD3 && sampleNumber == -1)
+                {
+                    printf(LIFE_TAG "[SOUND] Stop samples by object %d (life %d)\n", currentProcessedActorIdx, currentLifeNum);
+                    osystem_stopSample();
+                    break;
+                }
+
+                playSound(sampleNumber);
+
+                //setSampleFreq(0);
+                break;
+            }
+            case LM_REP_SAMPLE:
+            {
+                appendFormated("LM_REP_SAMPLE ");
+                int repSampleNum;
+                if (g_gameId == TIMEGATE)
+                {
+                    // The sample and its channel (taken for a frequency
+                    // before): in a loop until the channel is stopped or
+                    // given another one (TIMEGATE.EXE 2C5AD, 30C90; BUGS.md G33)
+                    repSampleNum = evalVar();
+                    const int channel = *(s16*)(currentLifePtr);
+                    currentLifePtr += 2;
+                    playChannelSound(repSampleNum, channel, true);
+                    break;
+                }
+                if (g_gameId == AITD1)
+                {
+                    repSampleNum = evalVar();
+                    currentLifePtr += 2; // frequency parameter (ignored for now)
+                }
+                else
+                {
+                    repSampleNum = *(s16*)(currentLifePtr);
+                    currentLifePtr += 2;
+                    currentLifePtr += 2; // frequency parameter
+                }
+
+                playSoundLooping(repSampleNum);
+                break;
+            }
+            case LM_STOP_SAMPLE:
+            {
+                appendFormated("LM_STOP_SAMPLE ");
+
+                // Time Gate stops one channel, the others go on: here every
+                // sound stopped, loops of other channels too (TIMEGATE.EXE
+                // 2C5E6, 30DB0; BUGS.md G33)
+                if (g_gameId == TIMEGATE)
+                {
+                    const int channel = readNextArgument();
+                    printf(LIFE_TAG "[SOUND] Stop channel %d by object %d (life %d)\n", channel, currentProcessedActorIdx, currentLifeNum);
+                    stopChannelSound(channel);
+                    break;
+                }
+
+                printf(LIFE_TAG "[SOUND] Stop samples by object %d (life %d)\n", currentProcessedActorIdx, currentLifeNum);
+                osystem_stopSample();
+
+                break;
+            }
+            case LM_SET_VOLUME_SAMPLE:
+            {
+                // Time Gate: the volume of a channel, 0 to 32767
+                // (TIMEGATE.EXE 2C627, 31050)
+                appendFormated("LM_SET_VOLUME_SAMPLE ");
+                const int channel = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                const int volume = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                printf(LIFE_TAG "[SOUND] Volume %d on channel %d by object %d (life %d)\n", volume, channel, currentProcessedActorIdx, currentLifeNum);
+                setChannelSoundVolume(channel, volume);
+                break;
+            }
+            case LM_SAMPLE_THEN: //todo
+            {
+                appendFormated("LM_SAMPLE_THEN ");
+                // Time Gate reads two samples, each with a word, and plays
+                // nothing (TIMEGATE.EXE 2C60A)
+                if (g_gameId == TIMEGATE)
+                {
+                    evalVar();
+                    currentLifePtr += 2;
+                    evalVar();
+                    currentLifePtr += 2;
+                    break;
+                }
+                if (g_gameId == AITD1)
+                {
+                    int newSample = evalVar();
+                    playSoundThen(newSample, evalVar());
+                }
+                else
+                {
+                    int newSample;
+
+                    if (g_gameId == JACK)
+                    {
+                        newSample = evalVar();
+                        nextSample = evalVar();
+                    }
+                    else
+                    {
+                        newSample = *(s16*)currentLifePtr;
+                        currentLifePtr += 2;
+
+                        nextSample = *(s16*)currentLifePtr;
+                        currentLifePtr += 2;
+                    }
+
+                    if (g_gameId == AITD2 || g_gameId == AITD3)
+                        restartSound(newSample);
+                    else
+                        playSound(newSample);
+                }
+                printf(LIFE_TAG "LM_SAMPLE_THEN\n");
+                // setSampleFreq(0);
+                break;
+            }
+            case LM_SAMPLE_THEN_REPEAT: //todo
+            {
+                appendFormated("LM_SAMPLE_THEN_REPEAT ");
+                // Time Gate: as its SAMPLE_THEN, nothing (TIMEGATE.EXE 2C60A)
+                if (g_gameId == TIMEGATE)
+                {
+                    evalVar();
+                    currentLifePtr += 2;
+                    evalVar();
+                    currentLifePtr += 2;
+                    break;
+                }
+                int newSample = evalVar();
+                playSoundThen(newSample, evalVar() | 0x4000);
+                // setSampleFreq(0);
+                //printf("LM_SAMPLE_THEN_REPEAT\n");
+                break;
+            }
+            ////////////////////////////////////////////////////////////////////////
+            case LM_MUSIC: // MUSIC
+            {
+                appendFormated("LM_MUSIC ");
+                int newMusicIdx = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                // Time Gate: then a word it does not use (TIMEGATE.EXE
+                // 2C662); taken for the next order (BUGS.md G37)
+                if (g_gameId == TIMEGATE)
+                    currentLifePtr += 2;
+
+                playMusic(newMusicIdx);
+                break;
+            }
+            case LM_NEXT_MUSIC: // TODO
+            {
+                appendFormated("LM_NEXT_MUSIC ");
+                // Time Gate: a word, the song, a word (TIMEGATE.EXE 2C691;
+                // BUGS.md G37)
+                if (g_gameId == TIMEGATE)
+                    currentLifePtr += 2;
+                int musicIdx = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                if (g_gameId == TIMEGATE)
+                    currentLifePtr += 2;
+
+                if (currentMusic == -1)
+                {
+                    playMusic(musicIdx);
+                }
+                else
+                {
+                    nextMusic = musicIdx;
+                }
+
+                break;
+            }
+            case LM_FADE_MUSIC: // ? fade out music and play another music ?
+            {
+                appendFormated("LM_FADE_MUSIC ");
+                // Time Gate: a word, the song, a word (TIMEGATE.EXE 2C8E3;
+                // BUGS.md G37)
+                if (g_gameId == TIMEGATE)
+                    currentLifePtr += 2;
+                lifeTempVar1 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                if (g_gameId == TIMEGATE)
+                    currentLifePtr += 2;
+
+                if (currentMusic != -1)
+                {
+                    fadeMusic(0, 0, 0x8000);    // fade out music
+                    startChrono(&musicChrono); // fade out music timer
+                    currentMusic = -2;         // waiting next music
+                    nextMusic = lifeTempVar1;    // next music to play
+                }
+                else
+                {
+                    playMusic(lifeTempVar1);
+                }
+
+                break;
+            }
+            case LM_RND_FREQ: // TODO
+            {
+                appendFormated("LM_RND_FREQ ");
+                //printf("LM_RND_FREQ\n");
+                currentLifePtr += 2;
+                break;
+            }
+            ////////////////////////////////////////////////////////////////////////
+            case LM_LIGHT: // LIGHT
+            {
+                appendFormated("LM_LIGHT ");
+                lifeTempVar1 = 2 - ((*(s16*)(currentLifePtr)) << 1);
+                currentLifePtr += 2;
+
+                if (g_gameId >= JACK || (!CVars[getCVarsIdx((enumCVars)KILLED_SORCERER)]))
+                {
+                    if (lightOff != lifeTempVar1)
+                    {
+                        printf(LIFE_TAG "LIGHT: the room is %s (script %d)\n", lifeTempVar1 ? "dark" : "lit", currentLifeNum);
+                        if (lifeTempVar1)
+                            rememberDarkRoom();
+                        lightOff = lifeTempVar1;
+                        lightVar2 = 1;
+                    }
+                }
+
+                break;
+            }
+            case LM_SHAKING: // SHAKING 
+            {
+                appendFormated("LM_SHAKING ");
+                const s16 previousAmplitude = shakingAmplitude;
+                shakingAmplitude = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                if(shakingAmplitude == 0)
+                {
+                    stopShaking();
+                }
+                else
+                {
+                    // Trigger screen shake with the specified amplitude
+                    setupShaking(shakingAmplitude);
+                }
+
+                // Scripts repeat it every frame while a monster shakes the
+                // floor: only a change is logged
+                if (shakingAmplitude != previousAmplitude)
+                    printf(LIFE_TAG "LM_SHAKING set to amplitude %d\n", shakingAmplitude);
+                break;
+            }
+            case LM_PLUIE:
+            {
+                appendFormated("LM_PLUIE ");
+                //printf("LM_PLUIE\n");
+                // TODO. Time Gate reads nothing (TIMEGATE.EXE: the common end)
+                if (g_gameId != TIMEGATE)
+                    currentLifePtr += 2;
+                break;
+            }
+            case LM_WATER: // set on entering the caverns, cleared on leaving; no shake (BUGS.md V25)
+            {
+                appendFormated("LM_WATER ");
+                // Time Gate reads nothing (TIMEGATE.EXE: the common end)
+                if (g_gameId == TIMEGATE)
+                    break;
+                shakeVar1 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                printf(LIFE_TAG "LM_WATER set to %d\n", shakeVar1);
+                break;
+            }
+            case LM_CAMERA_TARGET: // CAMERA_TARGET
+            {
+                appendFormated("LM_CAMERA_TARGET ");
+                lifeTempVar1 = readNextArgument("Target");
+
+                if (lifeTempVar1 != currentWorldTarget) // same target
+                {
+                    lifeTempVar2 = ListWorldObjets[lifeTempVar1].objIndex;
+
+                    if (lifeTempVar2 != -1)
+                    {
+                        if (g_gameId == AITD1)
+                        {
+                            currentWorldTarget = lifeTempVar1;
+                            currentCameraTargetActor = lifeTempVar2;
+
+                            lifeTempVar3 = ListObjets[currentCameraTargetActor].room;
+
+                            if (lifeTempVar3 != currentRoom)
+                            {
+                                FlagChangeSalle = 1;
+                                NewNumSalle = lifeTempVar3;
+                            }
+                        }
+                        else
+                        {
+                            // security case, the target actor may be still be in list while already changed of stage
+                            // TODO: check if AITD1 could use the same code (quite probable as it's only security)
+                            if (ListObjets[lifeTempVar2].stage != g_currentFloor)
+                            {
+                                currentWorldTarget = lifeTempVar1;
+                                FlagChangeEtage = 1;
+                                NewNumEtage = ListObjets[lifeTempVar2].stage;
+                                NewNumSalle = ListObjets[lifeTempVar2].room;
+                            }
+                            else
+                            {
+                                currentWorldTarget = lifeTempVar1;
+                                currentCameraTargetActor = lifeTempVar2;
+
+                                lifeTempVar3 = ListObjets[currentCameraTargetActor].room;
+
+                                if (lifeTempVar3 != currentRoom)
+                                {
+                                    FlagChangeSalle = 1;
+                                    NewNumSalle = lifeTempVar3;
+                                }
+                            }
+                        }
+                    }
+                    else // different stage
+                    {
+                        currentWorldTarget = lifeTempVar1;
+                        if (ListWorldObjets[lifeTempVar1].stage != g_currentFloor)
+                        {
+                            FlagChangeEtage = 1;
+                            NewNumEtage = ListWorldObjets[lifeTempVar1].stage;
+                            NewNumSalle = ListWorldObjets[lifeTempVar1].room;
+                        }
+                        else
+                        {
+                            if (currentRoom != ListWorldObjets[lifeTempVar1].room)
+                            {
+                                FlagChangeSalle = 1;
+                                NewNumSalle = ListWorldObjets[lifeTempVar1].room;
+                            }
+                        }
+                    }
+                }
+
+                break;
+            }
+            case LM_PICTURE: // displayScreen
+            {
+                appendFormated("LM_PICTURE ");
+
+                int pictureIndex = readNextArgument("pictureIndex");
+                int delay = readNextArgument("delay");
+
+                int sampleId;
+                if (g_gameId == TIMEGATE)
+                {
+                    sampleId = evalVar("sampleId");
+                    readNextArgument();
+                }
+                else
+                {
+                    sampleId = readNextArgument("sampleId");
+                }
+
+                SaveTimerAnim();
+
+                // A full-screen picture's sample replaced any loop on the
+                // original's single sample channel (BUGS.md C21). Time Gate
+                // stops none (TIMEGATE.EXE 2CDA9): the street's noise, started
+                // once by its script, never came back after the museum's
+                // board (BUGS.md G17)
+                if (g_gameId != TIMEGATE)
+                    osystem_stopLoopingSamples();
+                coreScreenPictureShown("ITD_RESS", pictureIndex);
+
+                LoadPak("ITD_RESS", pictureIndex, aux);
+
+                // The texts on screen belong to the scene, not to the picture
+                // ("Two days later..." stayed over every credit, BUGS.md A2)
+                for (messageStruct& message : messageTable)
+                    message.string = NULL;
+                uiLayer.fill(0);
+
+                if (g_gameId > AITD1)
+                {
+                    FadeOutPhys(0x10, 0);
+                    palette_t lpalette;
+                    copyPalette(aux + 64000, lpalette);
+                    if (g_gameId == AITD3)
+                        blackenNearBlack(lpalette);
+                    convertPaletteIfRequired(lpalette);
+                    copyPalette(lpalette, currentGamePalette);
+                    setPalette(lpalette);
+                }
+
+                FastCopyScreen(aux, frontBuffer);
+                osystem_CopyBlockPhys((unsigned char*)frontBuffer, 0, 0, 320, 200);
+                osystem_drawBackground();
+
+                // The picture comes up from black as it goes; setting its
+                // palette ended the fade and it appeared at once (AITD2's
+                // credits, BUGS.md A2). g_menuActive: the fades show the
+                // picture, not the 3D scene behind it
+                g_menuActive = true;
+                if (g_gameId > AITD1)
+                    FadeInPhys(0x10, 0);
+
+                unsigned int chrono;
+                startChrono(&chrono);
+
+                playSound(sampleId);
+
+
+                //soundFunc(0);
+
+                // AITD3 first shows the picture 1 second (60 ticks) that no
+                // key ends, and then counts its time (AITD3.EXE, 0x7ED6):
+                // without it the intro ended before its narration (BUGS.md T5)
+                // Time Gate does the same (TIMEGATE.EXE 2CEA2, 100 of its
+                // hundredths) and its delay is in seconds (2CEC1); a key or
+                // a click ends it, and here only that: the museum's board at
+                // the start (3 seconds) went before it could be read, and
+                // our ticks took its 3 for 3/60 of a second (BUGS.md G16)
+                const bool timeGateWaits = g_gameId == TIMEGATE;
+                const unsigned int firstTicks = (g_gameId == AITD3 || g_gameId == TIMEGATE) ? 60 : 0;
+
+                do
+                {
+                    unsigned int time;
+                    process_events();
+
+                    osystem_startFrame();
+                    osystem_drawBackground();
+                    osystem_stopFrame();
+                    updateNextSample();   // the queued sample follows, as while reading (BUGS.md A34)
+                    osystem_flip(NULL);
+
+                    time = evalChrono(&chrono);
+
+                    if (!timeGateWaits && time > firstTicks + (unsigned int)delay)
+                        break;
+                } while (evalChrono(&chrono) < firstTicks || (!key && !Click));
+
+                // AITD3: Esc on a picture of the intro ends the whole intro,
+                // as the original (AITD3.EXE, 0x7F31); other keys only end
+                // the picture (BUGS.md T5)
+                const bool endIntro = g_gameId == AITD3 && aitd3IntroPlaying && key == 0x1B;
+
+                RestoreTimerAnim();
+
+
+                FlagInitView = 1;
+
+                if (g_gameId > AITD1)
+                    FadeOutPhys(0x10, 0);
+                g_menuActive = false;
+
+                if (endIntro)
+                {
+                    printf(LIFE_TAG "Intro ended with Esc\n");
+                    while (key == 0x1B)
+                        process_events();
+                    FlagGameOver = 1;
+                    exitLife = 1;
+                }
+                break;
+            }
+            case LM_PLAY_SEQUENCE: // sequence
+            {
+                appendFormated("LM_PLAY_SEQUENCE ");
+                u16 sequenceIdx;
+                u16 fadeEntry;
+                u16 fadeOut;
+
+                SaveTimerAnim();
+
+                sequenceIdx = *(u16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                if (g_gameId == JACK)
+                {
+                    // Jack's PLAY_SEQUENCE only has the sequence: reading
+                    // three arguments ate the PICTUREs that follow (Santa at
+                    // the end, BUGS.md J2). Played once, without fades
+                    fadeEntry = 0;
+                    fadeOut = 1;
+                }
+                else
+                {
+                    fadeEntry = *(u16*)(currentLifePtr);
+                    currentLifePtr += 2;
+
+                    fadeOut = *(u16*)(currentLifePtr);
+                    currentLifePtr += 2;
+                }
+
+                // Time Gate: the video AN<n>.MUX (TIMEGATE.EXE 2CF10)
+                if (g_gameId == TIMEGATE)
+                {
+                    // The room drawn again afterwards, as after the other
+                    // games' sequences: the video's last frame (the museum's
+                    // painting, AN28) stayed as the room's background until
+                    // the hero moved (BUGS.md G20)
+                    timeGateStopSounds();
+                    osystem_pauseSoundsForVideo();
+                    playTimeGateVideo(sequenceIdx);
+                    osystem_resumeSoundsAfterVideo();
+                    FlagInitView = 2;
+                }
+                else
+                    playSequence(sequenceIdx, fadeEntry, fadeOut);
+
+                RestoreTimerAnim();
+
+                break;
+            }
+            case LM_DEF_SEQUENCE_SAMPLE:
+            {
+                appendFormated("LM_DEF_SEQUENCE_SAMPLE ");
+                u16 numParams;
+                int i;
+
+                // Time Gate: a list of sounds played one after another at
+                // once, its characters' voices (TIMEGATE.EXE 2CF6D)
+                if (g_gameId == TIMEGATE)
+                {
+                    const int count = *(s16*)(currentLifePtr);
+                    currentLifePtr += 2;
+                    std::vector<int> samples;
+                    for (int s = 0; s < count; s++)
+                        samples.push_back(evalVar());
+                    timeGatePlaySounds(samples, false);
+                    break;
+                }
+
+                numParams = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                ASSERT(numParams <= NUM_MAX_SEQUENCE_PARAM);
+
+                for (i = 0; i < numParams; i++)
+                {
+                    sequenceParams[i].frame = READ_LE_U16(currentLifePtr);
+                    currentLifePtr += 2;
+                    sequenceParams[i].sample = READ_LE_U16(currentLifePtr);
+                    currentLifePtr += 2;
+                }
+
+                numSequenceParam = numParams;
+                break;
+            }
+            ////////////////////////////////////////////////////////////////////////
+            case LM_PROTECT: // protection opcode
+            {
+                assert(g_gameId != TIMEGATE);
+                appendFormated("LM_PROTECT ");
+                printf(LIFE_TAG "LM_PROTECT\n");
+                //protection = 1;
+                break;
+            }
+            ////////////////////////////////////////////////////////////////////////
+            case LM_INVENTORY: // INVENTORY
+            {
+                appendFormated("LM_INVENTORY ");
+                statusScreenAllowed = *(s16*)currentLifePtr;
+                currentLifePtr += 2;
+                break;
+            }
+            case LM_SET_INVENTORY:
+            {
+                appendFormated("LM_SET_INVENTORY ");
+                // AITD2: each character has an inventory (Carnby 0, Grace 1).
+                // The objects of the other one are no more "found" (FOUND,
+                // 0x8000), those of this one are; it did nothing and Grace
+                // had Carnby's objects (BUGS.md A34)
+                const int inventoryIdx = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                if (inventoryIdx != currentInventory && inventoryIdx >= 0 && inventoryIdx < NUM_MAX_INVENTORY)
+                {
+                    for (int i = 0; i < numObjInInventoryTable[currentInventory]; i++)
+                        ListWorldObjets[inventoryTable[currentInventory][i]].foundFlag &= 0x7FFF;
+                    currentInventory = inventoryIdx;
+                    for (int i = 0; i < numObjInInventoryTable[currentInventory]; i++)
+                        ListWorldObjets[inventoryTable[currentInventory][i]].foundFlag |= 0x8000;
+                }
+                printf(LIFE_TAG "SET_INVENTORY %d\n", inventoryIdx);
+                break;
+            }
+            case LM_SET_GROUND: // 100 when the game starts (script 629)
+            {
+                appendFormated("LM_SET_GROUND ");
+                groundLevel = *(s16*)currentLifePtr;
+                currentLifePtr += 2;
+                printf(LIFE_TAG "SET_GROUND %d\n", groundLevel);
+                break;
+            }
+            case LM_MESSAGE:
+            {
+                appendFormated("LM_MESSAGE ");
+                lifeTempVar1 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                // "The Winchester is already loaded!" instead of "My
+                // Winchester is loaded!" (BUGS.md T34)
+                if (s_winchesterAlreadyLoaded == currentLifeNum && lifeTempVar1 == 107)
+                    lifeTempVar1 = 1026;
+
+                makeMessage(lifeTempVar1);
+
+                break;
+            }
+            case LM_MESSAGE_VALUE:
+            {
+                appendFormated("LM_MESSAGE_VALUE ");
+                lifeTempVar1 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                lifeTempVar2 = *(s16*)(currentLifePtr); // unused param ?
+                currentLifePtr += 2;
+
+                makeMessage(lifeTempVar1);
+
+                break;
+            }
+            case LM_END_SEQUENCE: // AITD1 ending: the tree burns (BUGS.md C50)
+            {
+                appendFormated("LM_END_SEQUENCE ");
+                playEndSequence();
+
+                break;
+            }
+            ////////////////////////////////////////////////////////////////////////
+            case LM_VAR:
+            {
+                appendFormated("LM_VAR ");
+                lifeTempVar1 = readNextArgument("Index");
+
+                lifeTempVar2 = evalVar("value");
+                if (aitd3WinchesterAlreadyLoaded(lifeTempVar1, lifeTempVar2))
+                {
+                    s_winchesterAlreadyLoaded = currentLifeNum;
+                    break;
+                }
+
+                vars[lifeTempVar1] = lifeTempVar2;
+                break;
+            }
+            case LM_INC: // INC_VAR
+            {
+                appendFormated("LM_INC ");
+                lifeTempVar1 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                vars[lifeTempVar1]++;
+                break;
+            }
+            case LM_DEC: // DEC_VAR
+            {
+                appendFormated("LM_DEC ");
+                lifeTempVar1 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                vars[lifeTempVar1]--;
+                break;
+            }
+            case LM_ADD: // ADD_VAR
+            {
+                appendFormated("LM_ADD ");
+                lifeTempVar1 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                vars[lifeTempVar1] += evalVar();
+                break;
+            }
+            case LM_SUB: // SUB_VAR
+            {
+                appendFormated("LM_SUB ");
+                lifeTempVar1 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                vars[lifeTempVar1] -= evalVar();
+                break;
+            }
+            case LM_MODIF_C_VAR:
+            case LM_C_VAR:
+            {
+                appendFormated("LM_C_VAR ");
+                lifeTempVar1 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                CVars[lifeTempVar1] = evalVar();
+                // AITD3: C_VAR 2 names the hero's life points variable,
+                // which the difficulty doubles or halves (BUGS.md T3)
+                if (lifeTempVar1 == 2)
+                    difficultyHeroLife();
+                break;
+            }
+            ////////////////////////////////////////////////////////////////////////
+            case LM_IF_EGAL:
+            {
+                appendFormated("LM_IF_EGAL ");
+                lifeTempVar1 = evalVar();
+                lifeTempVar2 = evalVar();
+
+                if (lifeTempVar1 == lifeTempVar2)
+                {
+                    currentLifePtr += 2;
+                }
+                else
+                {
+                    lifeTempVar2 = *(s16*)(currentLifePtr);
+                    currentLifePtr += lifeTempVar2 * 2;
+                    currentLifePtr += 2;
+                }
+
+                break;
+            }
+            // Time Gate (TIMEGATE.EXE 2D47E, 2D4CC): a value, the lowest and
+            // the highest; IF_IN goes on when the value is between them, IF_OUT
+            // when it is not, else they jump. They were unknown: their values
+            // were taken for orders and the rest of the script went astray
+            // (BUGS.md G37)
+            case LM_IF_IN:
+            case LM_IF_OUT:
+            {
+                appendFormated(opcodeLocated == LM_IF_IN ? "LM_IF_IN " : "LM_IF_OUT ");
+                const s16 value = (s16)evalVar();
+                const s16 lowest = (s16)evalVar();
+                const s16 highest = (s16)evalVar();
+                const bool inside = lowest <= value && value <= highest;
+
+                if (inside == (opcodeLocated == LM_IF_IN))
+                {
+                    currentLifePtr += 2;
+                }
+                else
+                {
+                    lifeTempVar2 = *(s16*)(currentLifePtr);
+                    currentLifePtr += lifeTempVar2 * 2;
+                    currentLifePtr += 2;
+                }
+
+                break;
+            }
+            case LM_IF_DIFFERENT:
+            {
+                appendFormated("LM_IF_DIFFERENT ");
+                lifeTempVar1 = evalVar();
+                lifeTempVar2 = evalVar();
+
+                if (lifeTempVar1 != lifeTempVar2)
+                {
+                    currentLifePtr += 2;
+                }
+                else
+                {
+                    lifeTempVar2 = *(s16*)(currentLifePtr);
+                    currentLifePtr += lifeTempVar2 * 2;
+                    currentLifePtr += 2;
+                }
+
+                break;
+            }
+            case LM_IF_SUP_EGAL:
+            {
+                appendFormated("LM_IF_SUP_EGAL ");
+                lifeTempVar1 = evalVar();
+                lifeTempVar2 = evalVar();
+
+                if (lifeTempVar1 >= lifeTempVar2)
+                {
+                    currentLifePtr += 2;
+                }
+                else
+                {
+                    lifeTempVar2 = *(s16*)(currentLifePtr);
+                    currentLifePtr += lifeTempVar2 * 2;
+                    currentLifePtr += 2;
+                }
+
+                break;
+            }
+            case LM_IF_SUP:
+            {
+                appendFormated("LM_IF_SUP ");
+                lifeTempVar1 = evalVar();
+                lifeTempVar2 = evalVar();
+
+                if (lifeTempVar1 > lifeTempVar2)
+                {
+                    currentLifePtr += 2;
+                }
+                else
+                {
+                    lifeTempVar2 = *(s16*)(currentLifePtr);
+                    currentLifePtr += lifeTempVar2 * 2;
+                    currentLifePtr += 2;
+                }
+
+                break;
+            }
+            case LM_IF_INF_EGAL:
+            {
+                appendFormated("LM_IF_INF_EGAL ");
+                lifeTempVar1 = evalVar();
+                lifeTempVar2 = evalVar();
+
+                if (lifeTempVar1 <= lifeTempVar2)
+                {
+                    currentLifePtr += 2;
+                }
+                else
+                {
+                    lifeTempVar2 = *(s16*)(currentLifePtr);
+                    currentLifePtr += lifeTempVar2 * 2;
+                    currentLifePtr += 2;
+                }
+
+                break;
+            }
+            case LM_IF_INF:
+            {
+                appendFormated("LM_IF_INF ");
+                lifeTempVar1 = evalVar();
+                lifeTempVar2 = evalVar();
+
+                if (lifeTempVar1 < lifeTempVar2)
+                {
+                    currentLifePtr += 2;
+                }
+                else
+                {
+                    lifeTempVar2 = *(s16*)(currentLifePtr);
+                    currentLifePtr += lifeTempVar2 * 2;
+                    currentLifePtr += 2;
+                }
+
+                break;
+            }
+            case LM_GOTO:
+            {
+                appendFormated("LM_GOTO ");
+                lifeTempVar1 = readNextArgument("Offset");
+                currentLifePtr += lifeTempVar1 * 2;
+                break;
+            }
+            ////////////////////////////////////////////////////////////////////////
+            case LM_SWITCH: // SWITCH
+            {
+                appendFormated("LM_SWITCH ");
+                switchVal = evalVar("value");
+                break;
+            }
+            case LM_CASE: // CASE
+            {
+                appendFormated("LM_CASE ");
+                lifeTempVar1 = readNextArgument("Case");
+
+                if (lifeTempVar1 == switchVal)
+                {
+                    currentLifePtr += 2;
+                }
+                else
+                {
+                    lifeTempVar2 = *(s16*)(currentLifePtr);
+                    currentLifePtr += lifeTempVar2 * 2;
+                    currentLifePtr += 2;
+                }
+
+                break;
+            }
+            case LM_MULTI_CASE: // MULTI_CASE
+            {
+                appendFormated("LM_MULTI_CASE ");
+                int i;
+                lifeTempVar1 = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+
+                lifeTempVar2 = 0;
+
+                for (i = 0; i < lifeTempVar1; i++)
+                {
+                    if (*(s16*)(currentLifePtr) == switchVal)
+                    {
+                        lifeTempVar2 = 1;
+                    }
+                    currentLifePtr += 2;
+                }
+
+                if (!lifeTempVar2)
+                {
+                    lifeTempVar2 = *(s16*)(currentLifePtr);
+                    currentLifePtr += lifeTempVar2 * 2;
+                    currentLifePtr += 2;
+                }
+                else
+                {
+                    currentLifePtr += 2;
+                }
+                break;
+            }
+            ////////////////////////////////////////////////////////////////////////
+            case LM_RETURN:
+            {
+                appendFormated("LM_RETURN ");
+                exitLife = 1;
+                break;
+            }
+            case LM_END:
+            {
+                appendFormated("LM_END ");
+                exitLife = 1;
+                break;
+            }
+            case LM_GAME_OVER:
+            {
+                appendFormated("LM_GAME_OVER ");
+
+
+                fadeMusic(0, 0, 0x8000);    // fade out music
+                startChrono(&musicChrono);
+
+                while (evalChrono(&musicChrono) < 120)
+                {
+                    process_events();
+                }
+                FlagGameOver = 1;
+                exitLife = 1;
+                break;
+            }
+            case LM_WAIT_GAME_OVER:
+            {
+                appendFormated("LM_WAIT_GAME_OVER ");
+                while (key || JoyD || Click)
+                {
+                    process_events();
+                }
+                while (!key && !JoyD && !Click)
+                {
+                    process_events();
+                }
+                FlagGameOver = 1;
+                exitLife = 1;
+                break;
+            }
+            case LM_DEL_INVENTORY:
+            {
+                // AITD3 (AITD3.EXE, 0x804B; no argument): empties the
+                // inventory in use. Carnby turning into the cougar (script
+                // 767) leaves his objects so; the cougar's script (377) then
+                // takes its own actions (182). Unknown here, the cougar had
+                // Carnby's inventory, with its actions among his objects
+                // (BUGS.md T45)
+                appendFormated("LM_DEL_INVENTORY ");
+                if (g_gameId != AITD3)
+                {
+                    printf(LIFE_WARN "DEL_INVENTORY only known in AITD3" CON_RESET "\n");
+                    break;
+                }
+                for (int i = 0; i < numObjInInventoryTable[currentInventory]; i++)
+                    ListWorldObjets[inventoryTable[currentInventory][i]].foundFlag &= 0x7FFF;
+                inHandTable[currentInventory] = -1;
+                numObjInInventoryTable[currentInventory] = 0;
+                action = 0;
+                printf(LIFE_TAG "DEL_INVENTORY %d\n", currentInventory);
+                break;
+            }
+            case LM_CALL_INVENTORY:
+            {
+                appendFormated("LM_CALL_INVENTORY ");
+                processInventory();
+                break;
+            }
+            case LM_DO_ROT_CLUT: // DO_ROT_CLUT
+            {
+                appendFormated("LM_DO_ROT_CLUT ");
+                assert(g_gameId == TIMEGATE);
+
+                int arg0 = readNextArgument();
+                int arg1 = readNextArgument();
+                int arg2 = readNextArgument();
+                break;
+            }
+            // Time Gate (TIMEGATE.EXE 2CA91, 2CAC9, 2CB16): a song again and
+            // again; or a song and, when it ends, the next (nextMusic, as
+            // NEXT_MUSIC; THEN_LOOP repeats that one)
+            case LM_MUSIC_AND_LOOP:
+            {
+                appendFormated("LM_MUSIC_AND_LOOP ");
+                const int musicIdx = *(s16*)(currentLifePtr);
+                currentLifePtr += 4;   // and a word it does not use (2CA91; BUGS.md G37)
+                playTimeGateMusicLoop(musicIdx);
+                break;
+            }
+            case LM_MUSIC_THEN:
+            case LM_MUSIC_THEN_LOOP:
+            {
+                appendFormated("LM_MUSIC_THEN ");
+                const int musicIdx = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                nextMusic = *(s16*)(currentLifePtr);
+                currentLifePtr += 4;   // and a word it does not use (2CAC9, 2CB16; BUGS.md G37)
+                playMusic(musicIdx);
+                break;
+            }
+            // Time Gate's music started with a fade in (TIMEGATE.EXE 2C6CB,
+            // 2C73F, 2C7CB, all through 308A0): the song, then where the fade
+            // goes and how long it takes; played as at once (the music volume
+            // is the lute's bar). Read and not played before, the museum had
+            // no music (BUGS.md G9)
+            case LM_START_FADE_IN_MUSIC:   // 5 values: once
+            case LM_START_FADE_IN_MUSIC_THEN:   // 6: and the song after it, the last
+            case LM_START_FADE_IN_MUSIC_LOOP:   // 5: again and again
+            {
+                appendFormated("LM_START_FADE_IN_MUSIC ");
+                const int musicIdx = readNextArgument();
+                const int count = (opcodeLocated == LM_START_FADE_IN_MUSIC_THEN) ? 5 : 4;
+                int last = 0;
+                for (int i = 0; i < count; i++)
+                    last = readNextArgument();
+                if (opcodeLocated == LM_START_FADE_IN_MUSIC_LOOP)
+                    playTimeGateMusicLoop(musicIdx);
+                else
+                {
+                    if (opcodeLocated == LM_START_FADE_IN_MUSIC_THEN)
+                        nextMusic = last;
+                    playMusic(musicIdx);
+                }
+                break;
+            }
+            case LM_FADE_OUT_MUSIC_STOP:   // 2 values (2C982): the music fades out and stops
+            {
+                appendFormated("LM_FADE_OUT_MUSIC_STOP ");
+                readNextArgument();
+                readNextArgument();
+                stopMusic();
+                break;
+            }
+            // Time Gate's changes of the music's volume and tempo (2C83C,
+            // 2CA1B, 2CB63): read; the volume is the lute's bar
+            case LM_FADE_IN_MUSIC:   // 3 values
+            case LM_SET_MUSIC_VOLUME:   // 2
+            case LM_MUSIC_ALTER_TEMPO:   // 2
+            {
+                appendFormated("LM_MUSIC_VOLUME ");
+                const int count = (opcodeLocated == LM_FADE_IN_MUSIC) ? 3 : 2;
+                for (int i = 0; i < count; i++)
+                    readNextArgument();
+                break;
+            }
+            // Time Gate's opcode 0x79: a list of sounds played again and again
+            // (TIMEGATE.EXE 2CFBD); 0x7A stops them (2D00B). Its 0x62 and 0x63
+            // are READ_ON_PICTURE and FIRE_UP_DOWN, as in AITD3 (BUGS.md G11)
+            case LM_REP_SEQUENCE_SAMPLE:
+            {
+                appendFormated("LM_REP_SEQUENCE_SAMPLE ");
+                const int count = *(s16*)(currentLifePtr);
+                currentLifePtr += 2;
+                std::vector<int> samples;
+                for (int s = 0; s < count; s++)
+                    samples.push_back(evalVar());
+                timeGatePlaySounds(samples, true);
+                break;
+            }
+            case LM_STOP_SEQUENCE_SAMPLE:
+            {
+                appendFormated("LM_STOP_SEQUENCE_SAMPLE ");
+                timeGateStopSounds();
+                break;
+            }
+            // Time Gate's orders that do nothing here (TIMEGATE.EXE: 2D676,
+            // the common end, for 0x46, 0x4F, 0x54 and 0x76; 0x65 STOP_CLUT)
+            case LM_STOP_CLUT:
+            case LM_GET_MATRICE:
+            case LM_REP_SAMPLE_N_TIME:
+                appendFormated("(nothing) ");
+                break;
+            default:
+            {
+                printf(LIFE_WARN "Unknown opcode %X in processLife" CON_RESET "\n", currentOpcode & 0x7FFF);
+                if (g_gameId == TIMEGATE)
+                    skipTimeGateOrder(currentOpcode & 0x7FFF);
+                assert(0);
+            }
+            }
+
+            // Objects left with invalid animation, body or speed are repaired
+            checkObjectAfterLifeOpcode(lifeNum, opcodeLocated, currentProcessedActorPtr);
+        }
+
+#ifdef DEBUG
+        if (strlen(currentDebugLifeLine))
+        {
+            printf(LIFE_TAG "%s\n", currentDebugLifeLine);
+        }
+#endif
+
+        if (var_6 != -1)
+        {
+            currentProcessedActorIdx = currentLifeActorIdx;
+            currentProcessedActorPtr = currentLifeActorPtr;
+        }
+
+    }
+
+    currentLifeNum = -1;
+}

@@ -1,0 +1,101 @@
+///////////////////////////////////////////////////////////////////////////////
+// Alone In The Dark Re-Haunted
+// Copyright (C) 2026 Infogrames / Spacefarer Retro Remasters LLC
+// Based on FITD by yaz0r, Re-haunted is released under GPL
+// Author: Jake Jackson (jake@spacefarergames.com)
+//
+// Sprite rendering and blitting
+///////////////////////////////////////////////////////////////////////////////
+
+#include "common.h"
+#include "sprite.h"
+
+void sHybrid_Sprite::read(uint8_t* buffer, int bufferSize) {
+    // Never past the sprite's own bytes: Time Gate's 2D animations begin with
+    // a filler sprite whose header is not a real one (36865 lines)
+    const uint8_t* end = buffer + bufferSize;
+    auto left = [&](int count) { return buffer + count <= end; };
+
+    dx = dy = flags = 0;
+    if (!left(4))
+        return;
+    flags = READ_LE_U16(buffer); buffer+=2;
+    if (g_gameId == TIMEGATE)
+    {
+        // Time Gate keeps the width (padded) and the height in two bytes each
+        if (!left(4))
+            return;
+        dx = READ_LE_U16(buffer); buffer += 2;
+        dy = READ_LE_U16(buffer); buffer += 2;
+        // The filler (the same one in every camera without 2D animations)
+        // claims more lines than the screen has: nothing to draw
+        if (dy > 200)
+        {
+            dx = dy = 0;
+            return;
+        }
+    }
+    else
+    {
+        dx = READ_LE_U8(buffer); buffer++;
+        dy = READ_LE_U8(buffer); buffer++;
+    }
+
+    lines.reserve(std::min<int>(dy, 200));
+    for (int i = 0; i < dy; i++) {
+        if (!left(1))
+            break;
+        auto& line = lines.emplace_back();
+        int numBlocks = READ_LE_U8(buffer); buffer++;
+        line.blocks.reserve(numBlocks);
+        for (int j = 0; j < numBlocks && left(3); j++) {
+            auto& block = line.blocks.emplace_back();
+            block.unk0 = READ_LE_U8(buffer); buffer++;
+            block.numWords = READ_LE_U8(buffer); buffer++;
+            block.numBytes = READ_LE_U8(buffer); buffer++;
+
+            int dataSize = block.numWords * 4 + block.numBytes;
+            if (!left(dataSize))
+                dataSize = (int)(end - buffer);
+            block.data.assign(buffer, buffer + dataSize);
+            buffer += dataSize;
+        }
+        if (left(1)) {
+            line.unk = READ_LE_U8(buffer); buffer++;
+        }
+    }
+    // As many lines as were really there
+    dy = (uint16_t)lines.size();
+}
+
+void AffSpr(int spriteNumber, int X, int Y, u8* layer, std::vector<sHybrid_Sprite>& sprites) {
+    if (spriteNumber < 0 || spriteNumber >= (int)sprites.size())
+        return;
+
+    sHybrid_Sprite& sprite = sprites[spriteNumber];
+
+    Y -= sprite.dy;
+    for (int y = 0; y < sprite.dy; y++) {
+        int screenY = y + Y;
+        if (screenY < 0 || screenY >= 200)
+            continue;
+
+        auto& lineData = sprite.lines[y];
+
+        int currentOffset = screenY * 320 + X;
+        for (int i = 0; i < lineData.blocks.size(); i++) {
+            auto& block = lineData.blocks[i];
+            currentOffset += block.unk0;
+            int blockSize = (int)block.data.size();
+            if (currentOffset >= 0 && currentOffset + blockSize <= 64000)
+            {
+                for (int k = 0; k < blockSize; k++)
+                {
+                    layer[(currentOffset + k) * 2] = block.data[k];
+                    layer[(currentOffset + k) * 2 + 1] = 1;
+                }
+            }
+            currentOffset += blockSize;
+        }
+    }
+}

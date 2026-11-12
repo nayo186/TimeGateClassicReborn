@@ -1,0 +1,111 @@
+///////////////////////////////////////////////////////////////////////////////
+// Alone In The Dark Re-Haunted
+// Copyright (C) 2026 Infogrames / Spacefarer Retro Remasters LLC
+// Based on FITD by yaz0r, Re-haunted is released under GPL
+// Author: Jake Jackson (jake@spacefarergames.com)
+//
+// Renderer interface declarations
+///////////////////////////////////////////////////////////////////////////////
+
+#ifndef _RENDERER_H_
+#define _RENDERER_H_
+
+#include <string>
+#include <vector>
+
+extern int BBox3D1;
+extern int BBox3D2;
+extern int BBox3D3;
+extern int BBox3D4;
+
+#define NUM_MAX_POINT_IN_POINT_BUFFER 800
+#define NUM_MAX_BONES 50
+
+extern std::array<point3dStruct, NUM_MAX_POINT_IN_POINT_BUFFER> pointBuffer;
+extern int numOfPoints;
+
+// Track which body's primitives are currently in primTable[]
+// External code (like lantern glow detection) can check this to verify
+// they're scanning the correct body's primitives, not some other body
+extern int g_currentPrimTableBodyNum;
+
+// Projected primitive queued for drawing (filled by AffObjet)
+struct rendererPointStruct
+{
+    float X;
+    float Y;
+    float Z;
+};
+
+#define NUM_MAX_VERTEX_IN_PRIM 64
+
+struct primEntryStruct
+{
+	u8 material;
+	u8 color;
+	u16 size;
+	u16 numOfVertices;
+	primTypeEnum type;
+	int originalPrimIndex;
+	bool isRampPrim;  // Track if this primitive is ramp-shaded (material 3-6)
+	bool nearClipped;  // Flagged by floating polygon detection (suppressed at render time)
+	rendererPointStruct vertices[NUM_MAX_VERTEX_IN_PRIM];
+	// The same vertices on the model itself, as the body file has them (x, y,
+	// z), and how much of the model a pixel of the game covers there (its
+	// distance / the camera's zoom): the grain of stone polygons stays on the
+	// object and keeps its size on the screen (noise_ps)
+	float model[NUM_MAX_VERTEX_IN_PRIM * 4];
+	// Time Gate (processPrim_Poly): its texture (TEXTURES.PAK, -1 none), the
+	// texel of each point and the shade level of each point (0-63, a row of
+	// the shade table; 0 = the colours as they are)
+	s16 texture;
+	float uv[NUM_MAX_VERTEX_IN_PRIM * 2];
+	float shade[NUM_MAX_VERTEX_IN_PRIM];
+};
+
+extern primEntryStruct primTable[];
+
+// Time Gate: the light for the next object, that of its room in the current
+// camera (floor.cpp reads it from the LGHT files, in the room's coordinates;
+// offset: where the room is in the world)
+void setTimeGateLightRoom(int room, int offsetX, int offsetY, int offsetZ);
+// Time Gate: sets the texels of texture `index` (256 wide, palette colours),
+// for faces whose texture is that number (a texture of TEXTURES.PAK, or a
+// number of its own such as the save screen's drum)
+void setTimeGateTexture(int index, const std::vector<u8>& texels);
+
+// Turns and moves a point by the camera
+void transformPoint(float* ax, float* bx, float* cx);
+// A point (coordinates of the camera's room) on the 320x200 screen; false if
+// it is behind or too near the camera
+bool projectToScreen(float x, float y, float z, float* screenX, float* screenY);
+
+// Draws a 3D model at a position and angles: projects it and sends its polygons to the renderer
+int AffObjet(int x, int y, int z, int alpha, int beta, int gamma, sBody* pBody);
+
+// Size of an object along its own axes: scale (1 = as modelled) and which
+// way each axis grows: 0 to both sides (around the model's pivot), +1 only
+// towards + (its - end stays), -1 only towards - (its + end stays)
+struct ObjectSize
+{
+    float scale[3] = { 1.0f, 1.0f, 1.0f };
+    int grow[3] = { 0, 0, 0 };
+};
+
+// Size of the next object AffObjet draws; put back ObjectSize() afterwards
+void setNextObjectSize(const ObjectSize& size);
+
+// Water of the caverns (AITD1) or ground (AITD2): while on, AffObjet does not
+// draw what is below this height of the world (down is +), cutting what
+// crosses it
+void setWaterSurface(bool on, int worldY);
+
+// The body about to be drawn (for the rules of special bodies)
+void setCurrentBodyNum(int bodyNum, sBody* pBody, const std::string& hqrName);
+
+// Projects a model and computes the screen rectangle it covers (BBox3D)
+void computeScreenBox(int x, int y, int z, int alpha, int beta, int gamma, sBody* bodyPtr);
+// The screen rectangle (BBox3D) a model will cover where it is drawn, animated or not, without drawing it
+void computeDrawnScreenBox(int x, int y, int z, int alpha, int beta, int gamma, sBody* bodyPtr);
+
+#endif

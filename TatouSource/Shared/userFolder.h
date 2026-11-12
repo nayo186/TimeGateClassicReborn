@@ -1,0 +1,42 @@
+///////////////////////////////////////////////////////////////////////////////
+// Alone in the Dark: Classic Reborn
+// Based on FITD by yaz0r and AloneInTheDarkReHaunted, released under GPL
+//
+// The portable user folder, next to Launcher.exe and Tatou.exe. Outside the
+// debug mode everything the game writes goes there, whether the data comes
+// from a GOG installation or from a copy (neither is ever written to):
+//   UserData\aitd_remaster.cfg         options shared by both games
+//   UserData\AITD1\ and UserData\JACK\ log of each game, and
+//       Saves\        the saves (SAVEn.ITD and their pictures SAVEn.png)
+//       Backgrounds\  the player's camera backgrounds and full-screen pictures
+//       Masks\        the player's masks
+//       Exports\      what F1 exports
+//       Voices\       (AITD1) other narrators, one folder each (e.g. French
+//                     with the player's French CD): Shared/narrators.h
+//   UserData\TimeGate\SoundFonts\  (Time Gate) other instruments for its
+//                     music, General MIDI soundfonts (.sf2), chosen with its
+//                     sound coin (platform/midiMusic.cpp)
+//   UserData\AITD3\Languages\  languages from the player's CD, one folder
+//                     each (Spanish): the language PAK, the data files that
+//                     go with it and its CD tracks, or the CD
+//                     image: Shared/languageFolder.h
+// The launcher creates the folders the first time it opens (empty: the
+// general README explains them). With the debug
+// mode on and a copy of the data, everything stays inside the copy as before
+// (backgrounds_custom, backgrounds_export). Shared by the game and the launcher.
+///////////////////////////////////////////////////////////////////////////////
+
+#pragma once
+
+static const char* const kUserDataFolder = "UserData";
+static const char* const kSavesFolder = "Saves";
+static const char* const kPicturesFolder = "Backgrounds";
+static const char* const kMasksFolder = "Masks";
+static const char* const kExportsFolder = "Exports";
+static const char* const kVoicesFolder = "Voices";
+static const char* const kLanguagesFolder = "Languages";
+static const char* const kSoundFontsFolder = "SoundFonts";
+// A portable copy of the game's GOG or Steam installation, in each game's
+// folder (UserData\AITD1\GAME...): the launcher takes it when no other is
+// chosen or the chosen one is gone
+static const char* const kPortableGameFolder = "GAME";

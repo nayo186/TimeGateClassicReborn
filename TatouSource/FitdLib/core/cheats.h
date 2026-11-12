@@ -1,0 +1,14 @@
+///////////////////////////////////////////////////////////////////////////////
+// Alone in the Dark: Classic Reborn
+// Based on FITD by yaz0r and AloneInTheDarkReHaunted, released under GPL
+//
+// Cheats chosen in F1 (g_settings.cheats): none acts while cheats are off.
+// Infinite life: the player's life never goes down from a hit; a script
+// death (a trap, a deadly fall or item) still kills. AITD3: only the life a
+// hit of the engine takes is put back.
+///////////////////////////////////////////////////////////////////////////////
+
+#pragma once
+
+// After each object's script (mainLoop.cpp): puts back the life a hit took
+void applyCheats();

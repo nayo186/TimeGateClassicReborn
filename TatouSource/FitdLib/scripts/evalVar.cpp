@@ -1,0 +1,1153 @@
+///////////////////////////////////////////////////////////////////////////////
+// Alone In The Dark Re-Haunted
+// Copyright (C) 2026 Infogrames / Spacefarer Retro Remasters LLC
+// Based on FITD by yaz0r, Re-haunted is released under GPL
+// Author: Jake Jackson (jake@spacefarergames.com)
+//
+// Script variable evaluation and conditional logic
+///////////////////////////////////////////////////////////////////////////////
+
+#include "common.h"
+#include "consoleLog.h"
+#include "timeGateSound.h"
+
+int getPosRelTable[] = {4,1,8,2,4,1,8,0};
+
+int getMatrix(int param1, int actorIdx, int param2)
+{
+    unsigned char* matrixPtr = (unsigned char*)HQR_Get(HQ_Matrices,param1);
+
+    // An object out of the list (not loaded) or outside every zone of the
+    // matrix (hardMat -1) read outside it and crashed AITD2 after the
+    // pirate's story; it has no value there (BUGS.md A33)
+    const int row = (actorIdx >= 0 && actorIdx < NUM_MAX_OBJECT) ? ListObjets[actorIdx].hardMat : 0;
+    const int column = (param2 >= 0 && param2 < NUM_MAX_OBJECT) ? ListObjets[param2].hardMat : 0;
+    if (!matrixPtr || row < 1 || row > matrixPtr[1] || column < 1 || column > matrixPtr[0])
+    {
+        printf(LIFE_WARN "MATRIX %d: object %d (hardMat %d) and object %d (hardMat %d) out of it, 0\n",
+            param1, actorIdx, row, param2, column);
+        return 0;
+    }
+
+    int matrixWidth = *matrixPtr++;
+    int matrixHeigh = *matrixPtr++;
+
+    matrixPtr+=(ListObjets[actorIdx].hardMat-1)*matrixWidth;
+    matrixPtr+=(ListObjets[param2].hardMat-1);
+
+	if(g_gameId == AITD3)
+	{
+		return *(unsigned char*)matrixPtr;
+	}
+    return *(char*)matrixPtr;
+}
+
+// AITD3's POSREL (AITD3.EXE 0xC6DB): the way from the centre of actor1 to the
+// centre of actor2, turned by 0x180 - beta, falls in one of four quarters of
+// 90 degrees; 2 is the one ahead of actor1. The AITD1 test below wanted
+// Carnby's body beside the point: the gun case's Winchester, in front of its
+// middle, never came (BUGS.md T30)
+static int getPosRelAITD3(tObject* actor1, tObject* actor2)
+{
+    ZVStruct localZv;
+    CopyZV(&actor2->zv, &localZv);
+    if (actor1->room != actor2->room)
+        AdjustZV(&localZv, actor2->room, actor1->room);
+
+    const int angle = 0x180 - actor1->beta;
+    const int dx = (localZv.ZVX1 + localZv.ZVX2) / 2 - (actor1->zv.ZVX1 + actor1->zv.ZVX2) / 2;
+    const int dz = (localZv.ZVZ1 + localZv.ZVZ2) / 2 - (actor1->zv.ZVZ1 + actor1->zv.ZVZ2) / 2;
+    const int c = cosTable[(angle + 0x100) & 0x3FF];
+    const int s = cosTable[angle & 0x3FF];
+    const int across = (dx * c - dz * s) >> 15;
+    const int along = (dx * s + dz * c) >> 15;
+
+    if (across >= 0)
+        return along >= 0 ? 2 : 8;
+    return along > 0 ? 4 : 1;
+}
+
+int getPosRel(tObject* actor1, tObject* actor2)
+{
+    if (g_gameId == AITD3)
+        return getPosRelAITD3(actor1, actor2);
+
+    int beta1 = actor1->beta;
+    int counter = 3;
+    ZVStruct localZv;
+    int centerX;
+    int centerZ;
+
+    if(beta1 >= 0x80 && beta1 < 0x180)
+    {
+        counter = 2;
+    }
+
+    if(beta1 >= 0x180 && beta1 < 0x280)
+    {
+        counter = 1;
+    }
+
+    if(beta1 >= 0x280 && beta1 < 0x380)
+    {
+        counter = 0;
+    }
+
+
+    CopyZV(&actor2->zv, &localZv);
+
+    if(actor1->room != actor2->room)
+    {
+        AdjustZV(&localZv, actor2->room, actor1->room);
+    }
+
+    centerX = (localZv.ZVX1 + localZv.ZVX2) / 2;
+    centerZ = (localZv.ZVZ1 + localZv.ZVZ2) / 2;
+
+    if(actor1->zv.ZVZ2 >= centerZ && actor1->zv.ZVZ1 <= centerZ)
+    {
+        if(actor1->zv.ZVX2 < centerX)
+        {
+            counter++;
+        }
+        else
+        {
+            if(actor1->zv.ZVX1 <= centerX)
+            {
+                return(0);
+            }
+            else
+            {
+                counter+=3;
+            }
+        }
+    }
+    else
+        if(actor1->zv.ZVX2 >= centerX || actor1->zv.ZVX1 <= centerX)
+        {
+            if(actor1->zv.ZVZ2 < centerZ )
+            {
+                counter+=2;
+            }
+            else
+            {
+                if(actor1->zv.ZVZ1 <= centerZ)
+                {
+                    return(0);
+                }
+            }
+        }
+        else
+        {
+            return(0);
+        }
+
+        return(getPosRelTable[counter]);
+}
+
+int calcDist(int X1, int Y1, int Z1, int X2, int Y2, int Z2)
+{
+    int Xdist = abs(X1 - X2);
+    int Ydist = abs(Y1 - Y2);
+    int Zdist = abs(Z1 - Z2);
+
+    return(Xdist + Ydist + Zdist); // recheck overflow
+}
+
+int testZvEndAnim(tObject* actorPtr,sAnimation* animPtr, int param)
+{
+    ASSERT(actorPtr);
+    ASSERT(animPtr);
+
+    s16 stepX = 0;
+    s16 stepZ = 0;
+
+    for(int i=0; i< animPtr->m_numFrames; i++)
+    {
+        stepZ += animPtr->m_frames[i].m_animStep.x;
+        stepX += animPtr->m_frames[i].m_animStep.z;
+    }
+
+    ZVStruct localZv;
+    CopyZV(&actorPtr->zv, &localZv);
+
+    walkStep(0,stepX,actorPtr->beta);
+
+    localZv.ZVX1 += animMoveX;
+    localZv.ZVX2 += animMoveX;
+    localZv.ZVY1 += param;
+    localZv.ZVY2 += param;
+    localZv.ZVZ1 += animMoveZ;
+    localZv.ZVZ2 += animMoveZ;
+
+    if(AsmCheckListCol(&localZv, &roomDataTable[actorPtr->room]))
+    {
+        return(0);
+    }
+
+    localZv.ZVY1 += 100;
+    localZv.ZVY2 += 100;
+
+    if(AsmCheckListCol(&localZv, &roomDataTable[actorPtr->room]))
+    {
+        return(1);
+    }
+
+    return(0);
+}
+
+int evalVar(const char* name)
+{
+    int var1;
+
+    if(g_gameId >= JACK)
+    {
+        return evalVar2(name);
+    }
+
+    var1 = *(s16*)(currentLifePtr);
+    currentLifePtr+=2;
+
+    if(var1 == -1)
+    {
+        int temp = *(s16*)(currentLifePtr);
+        currentLifePtr+=2;
+
+        return(temp);
+    }
+    else
+        if(var1 == 0)
+        {
+            int temp = *(s16*)(currentLifePtr);
+            currentLifePtr+=2;
+
+            return(vars[temp]);
+        }
+        else
+        {
+            tObject* actorPtr = currentLifeActorPtr;
+            int actorIdx = currentLifeActorIdx;
+
+            if(var1 & 0x8000)
+            {
+                int objectNumber;
+
+                objectNumber = *(s16*)currentLifePtr;
+
+                currentLifePtr+=2;
+
+                if(objectNumber < 0 || objectNumber >= (int)ListWorldObjets.size())
+                {
+                    printf(EVAL_WARN "evalVar: objectNumber %d out of bounds (size %d)" CON_RESET "\n", objectNumber, (int)ListWorldObjets.size());
+                    return 0;
+                }
+
+                actorIdx = ListWorldObjets[objectNumber].objIndex;
+
+                if(actorIdx==-1)
+                {
+                    actorPtr = nullptr;
+                    switch(var1 & 0x7FFF)
+                    {
+                    case 0x1F:
+                        {
+                            return(ListWorldObjets[objectNumber].room);
+                            break;
+                        }
+                    case 0x26:
+                        {
+                            return(ListWorldObjets[objectNumber].stage);
+                            break;
+                        }
+                    default:
+                        {
+                            printf(EVAL_WARN "Unsupported evalVar %X when actor not in room !" CON_RESET "\n", var1 & 0x7FFF);
+                            return 0;
+                        }
+                    }
+                }
+                else {
+                    actorPtr = &ListObjets[actorIdx];
+                }
+                
+            }
+            {
+
+                var1&=0x7FFF;     
+
+                var1--;
+
+                switch(var1)
+                {
+                case 0x0:
+                    {
+                        int temp1 = actorPtr->COL[0];
+
+                        if(temp1 != -1)
+                        {
+                            return(ListObjets[temp1].indexInWorld);
+                        }
+                        else
+                        {
+                            return(-1);
+                        }
+                        break;
+                    }
+                case 0x1:
+                    {
+                        return(actorPtr->HARD_DEC);
+                        break;
+                    }
+                case 0x2:
+                    {
+                        return(actorPtr->HARD_COL);
+                        break;
+                    }
+                case 0x3:
+                    {
+                        int temp = actorPtr->HIT;
+
+                        if(temp == -1)
+                        {
+                            return(-1);
+                        }
+                        else
+                        {
+                            return(ListObjets[temp].indexInWorld);
+                        }
+
+                        break;
+                    }
+                case 0x4:
+                    {
+                        int temp = actorPtr->HIT_BY;
+
+                        if(temp == -1)
+                        {
+                            return(-1);
+                        }
+                        else
+                        {
+                            return(ListObjets[temp].indexInWorld);
+                        }
+
+                        break;
+                    }
+                case 0x5:
+                    {
+                        return(actorPtr->ANIM);
+                        break;
+                    }
+                case 0x6:
+                    {
+                        return(actorPtr->flagEndAnim);
+                        break;
+                    }
+                case 0x7:
+                    {
+                        return(actorPtr->frame);
+                        break;
+                    }
+                case 0x8:
+                    {
+                        return(actorPtr->END_FRAME);
+                        break;
+                    }
+                case 0x9:
+                    {
+                        return(actorPtr->bodyNum);
+                        break;
+                    }
+                case 0xA: // MARK
+                    {
+                        return(actorPtr->MARK);
+                        break;
+                    }
+                case 0xB: // NUM_TRACK
+                    {
+                        return(actorPtr->trackNumber);
+                        break;
+                    }
+                case 0xC: // CHRONO
+                    {
+                        return(evalChrono(&actorPtr->CHRONO) /60); // recheck
+                        break;
+                    }
+                case 0xD:
+                    {
+                        return(evalChrono(&actorPtr->ROOM_CHRONO) / 60); // recheck
+                        break;
+                    }
+                case 0xE: // DIST
+                    {
+                        int actorNumber = ListWorldObjets[*(s16*)currentLifePtr].objIndex;
+                        currentLifePtr+=2;
+
+                        if(actorNumber == -1)
+                        {
+                            return(32000);
+                        }
+                        else
+                        {
+                            int tempX = ListObjets[actorNumber].worldX;
+                            int tempY = ListObjets[actorNumber].worldY;
+                            int tempZ = ListObjets[actorNumber].worldZ;
+
+                            return(calcDist(actorPtr->worldX, actorPtr->worldY, actorPtr->worldZ, tempX, tempY, tempZ));
+                        }
+
+                        break;
+                    }
+                case 0xF: // COL_BY
+                    {
+                        if(actorPtr->COL_BY == -1)
+                            return(-1);
+                        else
+                            return(ListObjets[actorPtr->COL_BY].indexInWorld);
+                        break;
+                    }
+                case 0x10: // found
+                    {
+                        if(ListWorldObjets[evalVar()].foundFlag & 0x8000)
+                        {
+                            return(1);
+                        }
+                        else
+                        {
+                            return(0);
+                        }
+
+                        break;
+                    }
+                case 0x11:
+                    {
+                        return action;
+                        break;
+                    }
+                case 0x12: // POSREL
+                    {
+                        int objNum;
+
+                        // Time Gate: the object is an expression (TIMEGATE.EXE
+                        // 2A37C), not a word (BUGS.md G37)
+                        if (g_gameId == TIMEGATE)
+                        {
+                            objNum = evalVar();
+                        }
+                        else
+                        {
+                            objNum = *(s16*)currentLifePtr;
+                            currentLifePtr+=2;
+                        }
+
+                        if(objNum < 0 || objNum >= (int)ListWorldObjets.size() || ListWorldObjets[objNum].objIndex == -1)
+                        {
+                            return 0;
+                        }
+
+                        return (getPosRel(actorPtr, &ListObjets[ListWorldObjets[objNum].objIndex]));
+
+                        break;
+                    }
+                case 0x13:
+                    {
+                        if(localJoyD & 4)
+                            return 4;
+                        if(localJoyD & 8)
+                            return 8;
+                        if(localJoyD & 1)
+                            return 1;
+                        if(localJoyD & 2)
+                            return 2;
+
+                        return 0;
+                        break;
+                    }
+                case 0x14:
+                    {
+                        return(localClick);
+                        break;
+                    }
+				case 0x15:
+					{
+						int temp1 = actorPtr->COL[0];
+						if(temp1 == -1)
+						{
+							temp1 = actorPtr->COL_BY;
+							if(temp1 == -1)
+								return -1;
+						}
+
+						return ListObjets[temp1].indexInWorld;
+						break;
+					}
+                case 0x16:
+                    {
+                        return(actorPtr->alpha);
+                        break;
+                    }
+                case 0x17:
+                    {
+                        return(actorPtr->beta);
+                        break;
+                    }
+                case 0x18:
+                    {
+                        return(actorPtr->gamma);
+                        break;
+                    }
+                case 0x19:
+                    {
+                        return(inHandTable[currentInventory]);
+                        break;
+                    }
+                case 0x1A:
+                    {
+                        return(actorPtr->hitForce);
+                        break;
+                    }
+                case 0x1B:
+                    {
+                        return(*(u16*)(((NumCamera+6)*2)+cameraPtr));
+                        break;
+                    }
+                case 0x1C:
+                    {
+                        int temp = *(s16*)currentLifePtr;
+                        currentLifePtr+=2;
+                        return(rand()%temp);
+                        break;
+                    }
+                case 0x1D:
+                    {
+                        return(actorPtr->falling);
+                        break;
+                    }
+                case 0x1E:
+                    {
+                        return(actorPtr->room);
+                        break;
+                    }
+                case 0x1F:
+                    {
+                        return(actorPtr->life);
+                        break;
+                    }
+                case 0x20:
+                    {
+                        int objNum;
+
+                        objNum = *(s16*)currentLifePtr;
+                        currentLifePtr+=2;
+
+                        if(ListWorldObjets[objNum].foundFlag & 0xC000)
+                        {
+                            return(1);
+                        }
+                        else
+                        {
+                            return(0);
+                        }
+
+                        break;
+                    }
+                case 0x21:
+                    {
+                        return(actorPtr->roomY);
+                        break;
+                    }
+                case 0x22: // TEST_ZV_END_ANIM
+                    {
+                        int temp1;
+                        int temp2;
+
+                        temp1 = *(s16*)currentLifePtr;
+                        currentLifePtr +=2;
+                        temp2 = *(s16*)currentLifePtr;
+                        currentLifePtr +=2;
+
+                        return(testZvEndAnim(actorPtr,HQR_Get(HQ_Anims,temp1),temp2));
+
+                        break;
+                    }
+                case 0x23: // TODO: music
+                    {
+                        return(currentMusic);
+                        break;
+                    }
+                case 0x24:
+                    {
+                        int temp = CVars[*(s16*)currentLifePtr];
+                        currentLifePtr+=2;
+                        return(temp);
+                        break;
+                    }
+                case 0x25:
+                    {
+                        return(actorPtr->stage);
+                        break;
+                    }
+                case 0x26: // THROW
+                    {
+                        int objNum;
+
+                        objNum = *(s16*)currentLifePtr;
+                        currentLifePtr+=2;
+
+                        if(ListWorldObjets[objNum].foundFlag & 0x1000)
+                        {
+                            return 1;
+                        }
+                        else
+                        {
+                            return 0;
+                        }
+                        break;
+                    }
+                default:
+                    {
+                        printf(EVAL_WARN "Unhandled test type %X in evalVar" CON_RESET "\n",var1);
+                        return 0;
+                        break;
+                    }
+                }
+            }
+        }
+}
+
+int evalVar2(const char* name)
+{
+    int var1;
+
+    var1 = *(s16*)(currentLifePtr);
+    currentLifePtr+=2;
+
+    if(var1 == -1)
+    {
+        int temp = *(s16*)(currentLifePtr);
+        currentLifePtr+=2;
+
+        if (name)
+            appendFormated("%s:", name);
+        appendFormated("%d, ", temp);
+
+        return(temp);
+    }
+    else
+        if(var1 == 0)
+        {
+            int temp = *(s16*)(currentLifePtr);
+            currentLifePtr+=2;
+
+            if (name)
+                appendFormated("%s:", name);
+            appendFormated("vars[%d], ", temp);
+
+            return(vars[temp]);
+        }
+        else
+        {
+            tObject* actorPtr = currentLifeActorPtr;
+            int actorIdx = currentLifeActorIdx;
+
+            if(var1 & 0x8000)
+            {
+                int objectNumber;
+
+                objectNumber = *(s16*)currentLifePtr;
+
+                currentLifePtr+=2;
+                actorPtr = nullptr;
+
+                if(objectNumber < 0 || objectNumber >= (int)ListWorldObjets.size())
+                {
+                    printf(EVAL_WARN "evalVar2: objectNumber %d out of bounds (size %d)" CON_RESET "\n", objectNumber, (int)ListWorldObjets.size());
+                    return 0;
+                }
+
+                actorIdx = ListWorldObjets[objectNumber].objIndex;
+
+                if(actorIdx==-1)
+                {
+                    switch(var1 & 0x7FFF)
+                    {
+                    case 0x1F:
+                        {
+                            if (name)
+                                appendFormated("%s:", name);
+                            appendFormated("worldObjects[%d].room, ", objectNumber);
+
+                            return(ListWorldObjets[objectNumber].room);
+                            break;
+                        }
+                    case 0x24:
+                        {
+                            if (name)
+                                appendFormated("%s:", name);
+                            appendFormated("worldObjects[%d].stage, ", objectNumber);
+
+                            return(ListWorldObjets[objectNumber].stage);
+                            break;
+                        }
+                    case 0x20:
+                        // The script of an object not loaded: AITD3.EXE reads
+                        // it from the world object (0x5A14); it gave 0 and a
+                        // warning every frame (BUGS.md T30)
+                        if (g_gameId == AITD3)
+                        {
+                            if (name)
+                                appendFormated("%s:", name);
+                            appendFormated("worldObjects[%d].life, ", objectNumber);
+                            return(ListWorldObjets[objectNumber].life);
+                        }
+                        [[fallthrough]];
+                    case 0x26:
+                        // Time Gate reads its two words here too (TIMEGATE.EXE
+                        // 2A0B7): left in the script, they were taken for the
+                        // next values (BUGS.md G37)
+                        if (g_gameId == TIMEGATE && (var1 & 0x7FFF) == 0x26)
+                        {
+                            currentLifePtr += 4;
+                            return 0;
+                        }
+                        [[fallthrough]];
+                    default:
+                        {
+                            printf(EVAL_WARN "Unsupported evalVar2 %X when actor not in room !" CON_RESET "\n", var1 & 0x7FFF);
+                            //assert(0);
+							return false;
+                        }
+                    }
+                }
+                else {
+                    actorPtr = &ListObjets[actorIdx];
+                }
+            }
+            {
+
+                var1&=0x7FFF;     
+
+                var1--;
+
+                switch(var1)
+                {
+                case 0x0:
+                    {
+                        int temp1 = actorPtr->COL[0];
+
+                        if (name)
+                            appendFormated("%s:", name);
+                        appendFormated("objectTable[%d].COL, ", temp1);
+
+                        if(temp1 != -1)
+                        {
+                            return(ListObjets[temp1].indexInWorld);
+                        }
+                        else
+                        {
+                            return(-1);
+                        }
+                        break;
+                    }
+                case 0x1:
+                    {
+                        if (name)
+                            appendFormated("%s:", name);
+                        appendFormated("HARD_DEC, ");
+                        return(actorPtr->HARD_DEC);
+                        break;
+                    }
+                case 0x2:
+                    {
+                        if (name)
+                            appendFormated("%s:", name);
+                        appendFormated("HARD_COL, ");
+
+                        return(actorPtr->HARD_COL);
+                        break;
+                    }
+                case 0x3:
+                    {
+                        if (name)
+                            appendFormated("%s:", name);
+                        appendFormated("HIT, ");
+                        int temp = actorPtr->HIT;
+
+                        if(temp == -1)
+                        {
+                            return(-1);
+                        }
+                        else
+                        {
+                            return(ListObjets[temp].indexInWorld);
+                        }
+
+                        break;
+                    }
+                case 0x4:
+                    {
+                        int temp = actorPtr->HIT_BY;
+
+                        if(temp == -1)
+                        {
+                            return(-1);
+                        }
+                        else
+                        {
+                            return(ListObjets[temp].indexInWorld);
+                        }
+
+                        break;
+                    }
+                case 0x5:
+                    {
+                        if (g_gameId == AITD2)
+                            return aitd2AnimSeen(actorIdx);
+                        return(actorPtr->ANIM);
+                        break;
+                    }
+                case 0x6:
+                    {
+                        // An animation a script has just asked for with
+                        // ANIM_RESET has not ended: the kitchen's dumbwaiter
+                        // door, asked to open, saw its closing ended in the
+                        // same pass and was stopped before it moved (BUGS.md A47)
+                        if ((g_gameId == AITD2 || g_gameId == AITD3) && actorPtr->newAnim >= 0 && (actorPtr->newAnimType & ANIM_RESET))
+                            return 0;
+                        if (g_gameId == AITD2 && aitd2EndAnimSeen(actorIdx))
+                            return 1;
+                        return(actorPtr->flagEndAnim);
+                        break;
+                    }
+                case 0x7:
+                    {
+                        return(actorPtr->frame);
+                        break;
+                    }
+                case 0x8:
+                    {
+                        if (g_gameId == AITD2 && aitd2EndFrameSeen(actorIdx))
+                            return 1;
+                        return(actorPtr->END_FRAME);
+                        break;
+                    }
+                case 0x9:
+                    {
+                        return(actorPtr->bodyNum);
+                        break;
+                    }
+                case 0xA: // MARK
+                    {
+                        return(actorPtr->MARK);
+                        break;
+                    }
+                case 0xB: // NUM_TRACK
+                    {
+                        return(actorPtr->trackNumber);
+                        break;
+                    }
+                case 0xC: // CHRONO
+                    {
+                        return(evalChrono(&actorPtr->CHRONO) /60); // recheck
+                        break;
+                    }
+                case 0xD:
+                    {
+                        return(evalChrono(&actorPtr->ROOM_CHRONO) / 60); // recheck
+                        break;
+                    }
+                case 0xE: // DIST
+                    {
+						int worldObjectIdx = *(s16*)currentLifePtr;
+						currentLifePtr+=2;
+
+                        int objectIdx = ListWorldObjets[worldObjectIdx].objIndex;
+                        
+						int tempX;
+						int tempY;
+						int tempZ;
+
+                        if(objectIdx == -1)
+                        {
+							if(ListWorldObjets[worldObjectIdx].room == currentRoom)
+							{
+								tempX = ListWorldObjets[worldObjectIdx].x;
+								tempY = ListWorldObjets[worldObjectIdx].y;
+								tempZ = ListWorldObjets[worldObjectIdx].z;
+							}
+							else
+							{
+								return(32000);
+							}
+                        }
+                        else
+                        {
+                            tempX = ListObjets[objectIdx].worldX;
+                            tempY = ListObjets[objectIdx].worldY;
+                            tempZ = ListObjets[objectIdx].worldZ;
+                        }
+
+						return(calcDist(actorPtr->worldX, actorPtr->worldY, actorPtr->worldZ, tempX, tempY, tempZ));
+
+                        break;
+                    }
+                case 0xF: // COL_BY
+                    {
+                        int colBy = actorPtr->COL_BY;
+                        // Pushed or pushing, the objects only overlap in
+                        // frames with a move; one that touches counts too
+                        // (BUGS.md A20). Only for an object that can be
+                        // pushed: the kitchen cupboard, touched by Grace
+                        // standing in front of it, opened again and again
+                        // (BUGS.md A45)
+                        if(colBy == -1 && (g_gameId == AITD2 || g_gameId == AITD3) && (actorPtr->objectType & AF_MOVABLE))
+                            colBy = findTouchingObject(actorIdx);
+                        if(colBy == -1)
+                            return(-1);
+                        else
+                            return(ListObjets[colBy].indexInWorld);
+                        break;
+                    }
+                case 0x10: // found
+                    {
+                        if(ListWorldObjets[evalVar()].foundFlag & 0x8000)
+                        {
+                            return(1);
+                        }
+                        else
+                        {
+                            return(0);
+                        }
+
+                        break;
+                    }
+                case 0x11:
+                    {
+                        return action;
+                        break;
+                    }
+                case 0x12: // POSREL
+                    {
+                        int objNum;
+
+                        // Time Gate: the object is an expression (TIMEGATE.EXE
+                        // 2A37C), not a word (BUGS.md G37)
+                        if (g_gameId == TIMEGATE)
+                        {
+                            objNum = evalVar();
+                        }
+                        else
+                        {
+                            objNum = *(s16*)currentLifePtr;
+                            currentLifePtr+=2;
+                        }
+
+                        if(objNum < 0 || objNum >= (int)ListWorldObjets.size() || ListWorldObjets[objNum].objIndex == -1)
+                        {
+                            return 0;
+                        }
+
+                        return (getPosRel(actorPtr, &ListObjets[ListWorldObjets[objNum].objIndex]));
+
+                        break;
+                    }
+                case 0x13:
+                    {
+                        if(localJoyD & 4)
+                            return 4;
+                        if(localJoyD & 8)
+                            return 8;
+                        if(localJoyD & 1)
+                            return 1;
+                        if(localJoyD & 2)
+                            return 2;
+
+                        return 0;
+                        break;
+                    }
+                case 0x14:
+                    {
+                        return(localClick);
+                        break;
+                    }
+                case 0x15:
+                    {
+                        int temp1 = actorPtr->COL[0];
+                        if(temp1 == -1)
+						{
+							temp1 = actorPtr->COL_BY;
+							// While pushing, the pushed object only overlaps
+							// in frames where the actor moves: at 60 FPS many
+							// moves round to 0. An object that touches it
+							// counts too, at any FPS (BUGS.md A20)
+							if(temp1 == -1 && (g_gameId == AITD2 || g_gameId == AITD3))
+								temp1 = findTouchingObject(actorIdx);
+							if(temp1 == -1)
+								return -1;
+						}
+
+                        return ListObjets[temp1].indexInWorld;
+                        break;
+                    }
+                case 0x16:
+                    {
+                        return(actorPtr->alpha);
+                        break;
+                    }
+                case 0x17:
+                    {
+                        return(actorPtr->beta);
+                        break;
+                    }
+                case 0x18:
+                    {
+                        return(actorPtr->gamma);
+                        break;
+                    }
+                case 0x19:
+                    {
+                        return(inHandTable[currentInventory]);
+                        break;
+                    }
+                case 0x1A:
+                    {
+                        return(actorPtr->hitForce);
+                        break;
+                    }
+                case 0x1B:
+                    {
+                        return(cameraDataTable[NumCamera]-&g_currentFloorCameraData[0]);
+                        break;
+                    }
+                case 0x1C:
+                    {
+                        int temp = *(s16*)currentLifePtr;
+                        currentLifePtr+=2;
+                        return(rand()%temp);
+                        break;
+                    }
+                case 0x1D:
+                    {
+                        return(actorPtr->falling);
+                        break;
+                    }
+                case 0x1E:
+                    {
+                        return(actorPtr->room);
+                        break;
+                    }
+                case 0x1F:
+                    {
+                        return(actorPtr->life);
+                        break;
+                    }
+                case 0x20:
+                    {
+                        int objNum;
+
+                        objNum = *(s16*)currentLifePtr;
+                        currentLifePtr+=2;
+
+                        if(ListWorldObjets[objNum].foundFlag & 0xC000)
+                        {
+                            return(1);
+                        }
+                        else
+                        {
+                            return(0);
+                        }
+
+                        break;
+                    }
+                case 0x21: // TODO: music
+                    {
+                        // Time Gate skips a word here (TIMEGATE.EXE 2A4FB;
+                        // BUGS.md G37)
+                        if (g_gameId == TIMEGATE)
+                            currentLifePtr += 2;
+                        return(currentMusic);
+                        break;
+                    }
+                case 0x22: // c_var
+                    {
+                        int temp = CVars[*(s16*)currentLifePtr];
+                        currentLifePtr+=2;
+                        return(temp);
+                        break;
+                    }
+                case 0x23:
+                    {
+                        return(actorPtr->stage);
+                        break;
+                    }
+                case 0x24: // THROW
+                    {
+                        int objNum;
+
+                        objNum = *(s16*)currentLifePtr;
+                        currentLifePtr+=2;
+
+                        if(ListWorldObjets[objNum].foundFlag & 0x1000)
+                        {
+                            return 1;
+                        }
+                        else
+                        {
+                            return 0;
+                        }
+                        break;
+                    }
+                case 0x25: // get_matrix
+                    {
+                        int param1;
+                        int param2;
+
+                        param1 = *(s16*)currentLifePtr;
+                        currentLifePtr+=2;
+
+                        param2 = *(s16*)currentLifePtr;
+                        currentLifePtr+=2;
+
+                        return getMatrix(param1,actorIdx,ListWorldObjets[param2].objIndex);
+                        break;
+                    }
+                case 0x26: // hard_mat
+                    {
+                        return actorPtr->hardMat;
+                        break;
+                    }
+                case 0x27: // TEST_PROTECT
+                    {
+                        return 1;
+                        break;
+                    }
+                case 0x29:
+                    {
+                        // Time Gate: an expression, halved (TIMEGATE.EXE
+                        // 2A578). Unknown, its expression was taken for the
+                        // next values (BUGS.md G37)
+                        if (g_gameId == TIMEGATE)
+                            return evalVar() >> 1;
+                        printf(EVAL_WARN "Unhandled test type %X in evalVar" CON_RESET "\n", var1);
+                        return 0;
+                    }
+                case 0x2A: // related to samples
+                    {
+                    // Time Gate: whether its list of voices has ended
+                    // (TIMEGATE.EXE 2A0CC, 0x61986)
+                    if (g_gameId == TIMEGATE)
+                        return timeGateSoundsEnded() ? 1 : 0;
+                    return 1;
+                    break;
+                    }
+                default:
+                    {
+                        printf(EVAL_WARN "Unhandled test type %X in evalVar" CON_RESET "\n",var1);
+                        return 0;
+                        break;
+                    }
+                }
+            }
+        }
+}
+

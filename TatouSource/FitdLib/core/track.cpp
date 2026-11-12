@@ -1,0 +1,906 @@
+///////////////////////////////////////////////////////////////////////////////
+// Alone In The Dark Re-Haunted
+// Copyright (C) 2026 Infogrames / Spacefarer Retro Remasters LLC
+// Based on FITD by yaz0r, Re-haunted is released under GPL
+// Author: Jake Jackson (jake@spacefarergames.com)
+//
+// Actor movement tracking and pathfinding
+///////////////////////////////////////////////////////////////////////////////
+
+#include "common.h"
+#include "consoleLog.h"
+#include "modernStick.h"
+#include "math.h"
+#include <algorithm>
+#include <array>
+
+#define	TL_INIT_COOR		0
+#define	TL_GOTO			1
+#define	TL_END			2
+#define	TL_REPEAT		3
+#define	TL_MARK			4
+#define	TL_WALK			5 // removed in AITD2+
+#define	TL_RUN			6 // removed in AITD2+
+#define	TL_STOP			7
+#define	TL_BACK			8 // removed in AITD2+
+#define	TL_SET_ANGLE		9
+#define	TL_COL_OFF		10
+#define	TL_COL_ON		11
+#define	TL_SET_DIST		12
+#define	TL_DEC_OFF		13
+#define	TL_DEC_ON		14
+#define	TL_GOTO_3D		15
+#define	TL_MEMO_COOR		16
+#define	TL_GOTO_3DX		17
+#define	TL_GOTO_3DZ		18
+#define	TL_ANGLE		19
+#define	TL_CLOSE		20
+#define	TL_WAIT			21 // AITD2+: stays until the life script's CONTINUE_TRACK
+
+// AITD2+ has removed a few entries, so covert the enum to match
+s16 convertTrackMacro(s16 inTrackMacro) {
+    if (g_gameId == AITD1) {
+        return inTrackMacro;
+    }
+
+    if (inTrackMacro <= 4)
+        return inTrackMacro;
+
+    if (inTrackMacro >= 6)
+        return inTrackMacro + 3;
+
+    assert(inTrackMacro == 5);
+    return TL_WAIT;
+}
+
+// AITD3: ticks between two track macros that do not move the object (one
+// frame of the original), and when each object ran the last one
+static const unsigned int kAitd3InstantMacroTicks = 5;
+static std::array<unsigned int, NUM_MAX_OBJECT> s_lastInstantMacroTick{};
+
+// A macro done at once: the object neither walks nor turns while on it
+static bool isInstantTrackMacro(s16 trackMacro)
+{
+    switch (trackMacro)
+    {
+    case TL_INIT_COOR:
+    case TL_END:
+    case TL_REPEAT:
+    case TL_MARK:
+    case TL_STOP:
+    case TL_COL_OFF:
+    case TL_COL_ON:
+    case TL_DEC_OFF:
+    case TL_DEC_ON:
+    case TL_MEMO_COOR:
+    case TL_ANGLE:
+        return true;
+    default:
+        return false;
+    }
+}
+
+int makeProportional(int x1, int x2, int y1, int y2)
+{
+    if(y1 == 0)
+        return x1;
+    return x1 + ((x2 - x1) * y2) / y1;
+}
+
+int getTargetSideAtAngle(int ax)
+{
+    int xOut;
+    int yOut;
+
+    Rotate(ax,0,1000,&xOut,&yOut);
+
+    yOut *= angleCompZ;
+    xOut *= angleCompX;
+
+    yOut -= xOut;
+
+    if(yOut==0)
+        return(0);
+
+    if(yOut>0)
+        return(1);
+    else
+        return(-1);
+}
+
+int CapObjet(int x1,int z1, int beta, int x2, int z2)
+{
+    int resultMin;
+    int resultMax;
+
+    angleCompX = x2 - x1;
+    angleCompZ = z2 - z1;
+    angleCompBeta = beta;
+
+    resultMin = getTargetSideAtAngle(beta - 4);
+    resultMax = getTargetSideAtAngle(beta + 4);
+
+    if(resultMax == -1 && resultMin == 1) // in the middle
+    {
+        return(getTargetSideAtAngle(beta));
+    }
+    else
+    {
+        return(((resultMax+resultMin)+1)>>1);
+    }
+}
+
+void GereManualRot(int param)
+{
+    if(localJoyD&4)
+    {
+        if(currentProcessedActorPtr->direction != 1)
+        {
+            currentProcessedActorPtr->rotate.numSteps = 0;
+        }
+
+        currentProcessedActorPtr->direction = 1;
+
+        if(currentProcessedActorPtr->rotate.numSteps == 0)
+        {
+            int oldBeta = currentProcessedActorPtr->beta;
+
+            if(currentProcessedActorPtr->speed == 0)
+            {
+                InitRealValue(oldBeta,oldBeta+0x100,param/2,&currentProcessedActorPtr->rotate);
+            }
+            else
+            {
+                InitRealValue(oldBeta,oldBeta+0x100,param,&currentProcessedActorPtr->rotate);
+            }
+        }
+
+        currentProcessedActorPtr->beta = updateActorRotation(&currentProcessedActorPtr->rotate);
+    }
+    if(localJoyD&8)
+    {
+        if(currentProcessedActorPtr->direction != -1)
+        {
+            currentProcessedActorPtr->rotate.numSteps = 0;
+        }
+
+        currentProcessedActorPtr->direction = -1;
+
+        if(currentProcessedActorPtr->rotate.numSteps == 0)
+        {
+            int oldBeta = currentProcessedActorPtr->beta;
+
+            if(currentProcessedActorPtr->speed == 0)
+            {
+                InitRealValue(oldBeta,oldBeta-0x100,param/2,&currentProcessedActorPtr->rotate);
+            }
+            else
+            {
+                InitRealValue(oldBeta,oldBeta-0x100,param,&currentProcessedActorPtr->rotate);
+            }
+        }
+
+        currentProcessedActorPtr->beta = updateActorRotation(&currentProcessedActorPtr->rotate);
+    }
+    if(!(localJoyD&0x3C))
+    {
+        currentProcessedActorPtr->direction = 0;
+        currentProcessedActorPtr->rotate.numSteps = 0;
+    }
+}
+
+#define DISTANCE_TO_POINT_TRESSHOLD 400
+
+unsigned int lastTimeForward = 0;
+
+char* getRoomLink(unsigned int room1, unsigned int room2)
+{
+    int i;
+    s16 numOfZones;
+    char* zoneData = (char*)getRoomData(room1);  
+    char* bestZone;
+
+    zoneData += *(s16*)(zoneData);
+    numOfZones = *(s16*)zoneData;
+    zoneData+=2;
+
+    bestZone = zoneData;
+
+    for(i=0;i<numOfZones;i++)
+    {
+        if(*(s16*)(zoneData+14) == 4)
+        {
+            bestZone = zoneData;
+
+            if(*(s16*)(zoneData+12) == room2)
+            {
+                return bestZone;
+            }
+        }
+
+        zoneData += 16;
+    }
+
+    return bestZone;
+}
+
+// Time of a quarter turn of an object following another: 60 ticks, as the
+// original. AITD2 turns faster when the target is near: walking, that turn
+// draws a circle of about 200, and Grace, sent to the parrot's perch until she
+// is within 200 of it, went round it for a minute (BUGS.md A40)
+static int followTurnTime(int targetX, int targetZ)
+{
+    if (g_gameId != AITD2 && g_gameId != AITD3)
+        return 60;
+    const int dx = targetX - (currentProcessedActorPtr->roomX + currentProcessedActorPtr->stepX);
+    const int dz = targetZ - (currentProcessedActorPtr->roomZ + currentProcessedActorPtr->stepZ);
+    const int distance = (int)sqrt((double)dx * dx + (double)dz * dz);
+    return std::clamp(distance * 60 / 800, 10, 60);
+}
+
+// Quick turn, as the Resident Evil HD remaster: back and run pressed together turn the
+// player half round, smoothly, in kQuickTurnTicks; meanwhile the other
+// directions are ignored. A press: holding them turns once
+static const unsigned int kQuickTurnTicks = 18;
+static bool s_quickTurnPressed = false;
+static int s_quickTurnActor = -1;
+static unsigned int s_quickTurnStart = 0;
+static int s_quickTurnFrom = 0;
+
+static bool quickTurn()
+{
+    const bool pressed = (localJoyD & 2) && (localJoyD & 0x40);
+    const bool newPress = pressed && !s_quickTurnPressed;
+    s_quickTurnPressed = pressed;
+
+    tObject* actor = currentProcessedActorPtr;
+    if (newPress && s_quickTurnActor != currentProcessedActorIdx)
+    {
+        s_quickTurnActor = currentProcessedActorIdx;
+        s_quickTurnStart = timer;
+        s_quickTurnFrom = actor->beta;
+    }
+    if (s_quickTurnActor != currentProcessedActorIdx)
+        return false;
+
+    const unsigned int elapsed = timer - s_quickTurnStart;
+    actor->speed = 0;
+    actor->rotate.numSteps = 0;
+    if (elapsed >= kQuickTurnTicks)
+    {
+        actor->beta = (s_quickTurnFrom + 0x200) & 0x3FF;
+        actor->direction = 0;
+        s_quickTurnActor = -1;
+        return true;
+    }
+    actor->beta = (s_quickTurnFrom + (int)(0x200 * elapsed / kQuickTurnTicks)) & 0x3FF;
+    actor->direction = 1;
+    return true;
+}
+
+void processTrack(void)
+{
+    switch(currentProcessedActorPtr->trackMode)
+    {
+    case 1: // manual
+        {
+            if (quickTurn())
+                break;
+
+            // The modern left stick turns the player towards it (modernStick.cpp);
+            // its forward is not a double tap: turning on the spot and walking
+            // again would start running
+            const bool modernStick = modernStickTurn();
+            if (!modernStick)
+                GereManualRot(40); // reduced from 60 for snappier rotation during combat
+            if(localJoyD&1) // forward
+            {
+                const bool doubleTap = !modernStick && timer - lastTimeForward < 10 && currentProcessedActorPtr->speed != 4;
+                if((localJoyD&0x40) || doubleTap) // run button held OR double-tap forward
+                {
+                    currentProcessedActorPtr->speed = 5;
+                }
+                else
+                {
+                    if(currentProcessedActorPtr->speed == 0 || currentProcessedActorPtr->speed == -1)
+                    {
+                        currentProcessedActorPtr->speed = 4;
+                    }
+                }
+
+                lastTimeForward = timer;
+            }
+            else
+            {
+                if((currentProcessedActorPtr->speed > 0) && (currentProcessedActorPtr->speed<=4))
+                {
+                    currentProcessedActorPtr->speed = 0; // instant stop for more responsive movement
+                }
+                else
+                {
+                    currentProcessedActorPtr->speed = 0;
+                }
+            }
+
+            if(localJoyD&2) // backward
+            {
+                if(currentProcessedActorPtr->speed == 0 || currentProcessedActorPtr->speed >= 4)
+                    currentProcessedActorPtr->speed = -1;
+
+                if(currentProcessedActorPtr->speed == 5)
+                    currentProcessedActorPtr->speed = 0;
+            }
+
+            break;
+        }
+    // Time Gate's mode 5 (TIMEGATE.EXE 17BFB) follows its target on a path
+    // found over a grid of the rooms (304B0); not written yet, it follows it
+    // straight, as mode 2. Taken for "manual" before, the chasing enemies
+    // turned round and stood still (BUGS.md G42)
+    case 5:
+    case 2: // follow
+        {
+            int followedActorIdx = ListWorldObjets[currentProcessedActorPtr->trackNumber].objIndex;
+
+            if(followedActorIdx == -1)
+            {
+                // Target was deleted - stop following and switch to idle.
+                // Without this, the enemy stays in trackMode 2 forever with
+                // direction=0/speed=0, permanently frozen.
+                currentProcessedActorPtr->trackMode = 0;
+                currentProcessedActorPtr->direction = 0;
+                currentProcessedActorPtr->speed = 0;
+            }
+            else
+            {
+                tObject* followedActorPtr = &ListObjets[followedActorIdx];
+
+                int targetRoomNumber = followedActorPtr->room;
+                int targetX = followedActorPtr->roomX;
+                int targetY = followedActorPtr->roomY;
+                int targetZ = followedActorPtr->roomZ;
+                int angleModif;
+
+                if (g_gameId == AITD1) {
+                    // in AITD1, if the target entity is in a different room, the entity would aim for the center of the trigger zone to get to that room
+                    if (currentProcessedActorPtr->room != targetRoomNumber)
+                    {
+                        char* link = getRoomLink(currentProcessedActorPtr->room, targetRoomNumber);
+
+                        targetX = *(s16*)(link + 0) + (((*(s16*)(link + 2)) - (*(s16*)(link + 0))) / 2);
+                        targetY = *(s16*)(link + 4) + (((*(s16*)(link + 6)) - (*(s16*)(link + 4))) / 2);
+                        targetZ = *(s16*)(link + 8) + (((*(s16*)(link + 10)) - (*(s16*)(link + 8))) / 2);
+                    }
+                }
+                else {
+                    // This was changed from AITD2+ to aim for the target in world-space
+                    if((followedActorPtr->room >= 0) && (currentProcessedActorPtr->room>=0))
+                    {
+                        const auto& targetRoom = roomDataTable[followedActorPtr->room];
+                        const auto& sourceRoom = roomDataTable[currentProcessedActorPtr->room];
+
+                        targetX -= (sourceRoom.worldX - targetRoom.worldX) * 10;
+                        targetZ += (sourceRoom.worldZ - targetRoom.worldZ) * 10;
+                    }
+                }
+
+                angleModif = CapObjet( currentProcessedActorPtr->roomX + currentProcessedActorPtr->stepX,
+                    currentProcessedActorPtr->roomZ + currentProcessedActorPtr->stepZ,
+                    currentProcessedActorPtr->beta, targetX, targetZ);
+
+                if( (currentProcessedActorPtr->rotate.numSteps == 0) || (currentProcessedActorPtr->direction != angleModif) )
+                {
+                    InitRealValue( currentProcessedActorPtr->beta, currentProcessedActorPtr->beta - (angleModif * 256), followTurnTime(targetX, targetZ), &currentProcessedActorPtr->rotate);
+                }
+
+                currentProcessedActorPtr->direction = angleModif;
+
+                if( currentProcessedActorPtr->direction == 0 )
+                {
+                    currentProcessedActorPtr->rotate.numSteps = 0;
+                }
+                else
+                {
+                    currentProcessedActorPtr->beta = updateActorRotation(&currentProcessedActorPtr->rotate);
+                }
+
+                currentProcessedActorPtr->speed = 4;
+
+            }
+            break;
+        }
+    case 3: // track
+        {
+            // One macro per tick of the game clock at most, as at 60 fps and
+            // on the 1992 PC: above 60 fps a frame without a tick ran the next
+            // macros without moving, and a track could end short of its end
+            // (the attic stairs ended in the zone that walks back up, BUGS.md V29)
+            if (ticksThisFrame == 0)
+                break;
+
+            char* trackPtr = HQR_Get(listTrack,currentProcessedActorPtr->trackNumber);
+            trackPtr+=currentProcessedActorPtr->positionInTrack * 2;
+
+            s16 trackMacro = convertTrackMacro(*(s16*)trackPtr);
+            trackPtr += 2;
+
+            // AITD3 runs one macro per frame (DO_MOVE in the life script),
+            // about 12 frames a second on the PCs of its time: the macros that
+            // do not move wait that long here. Above, the hole of floor 10
+            // (zone 43, track 1344: four switches and the end) ended in 5
+            // ticks, before the falling animation (16 ticks) the script waits
+            // for, and Carnby never fell (BUGS.md T39)
+            if (g_gameId == AITD3 && isInstantTrackMacro(trackMacro))
+            {
+                unsigned int& lastTick = s_lastInstantMacroTick[currentProcessedActorIdx];
+                if (timer - lastTick < kAitd3InstantMacroTicks)
+                    break;
+                lastTick = timer;
+            }
+
+            //printf("Track macro %X\n",trackMacro);
+
+            switch(trackMacro)
+            {
+            case TL_INIT_COOR: // warp
+                {
+                    int roomNumber = *(s16*)(trackPtr);
+                    trackPtr += 2;
+
+                    if(currentProcessedActorPtr->room != roomNumber)
+                    {
+                        if(currentCameraTargetActor == currentProcessedActorIdx)
+                        {
+                            FlagChangeSalle = 1;
+                            NewNumSalle = roomNumber;
+                        }
+
+                        currentProcessedActorPtr->room = roomNumber;
+                    }
+
+                    currentProcessedActorPtr->zv.ZVX1 -= currentProcessedActorPtr->roomX + currentProcessedActorPtr->stepX;
+                    currentProcessedActorPtr->zv.ZVX2 -= currentProcessedActorPtr->roomX + currentProcessedActorPtr->stepX;
+                    currentProcessedActorPtr->zv.ZVY1 -= currentProcessedActorPtr->roomY + currentProcessedActorPtr->stepY;
+                    currentProcessedActorPtr->zv.ZVY2 -= currentProcessedActorPtr->roomY + currentProcessedActorPtr->stepY;
+                    currentProcessedActorPtr->zv.ZVZ1 -= currentProcessedActorPtr->roomZ + currentProcessedActorPtr->stepZ;
+                    currentProcessedActorPtr->zv.ZVZ2 -= currentProcessedActorPtr->roomZ + currentProcessedActorPtr->stepZ;
+
+                    currentProcessedActorPtr->worldX = currentProcessedActorPtr->roomX = *(s16*)(trackPtr);
+                    trackPtr += 2;
+                    currentProcessedActorPtr->worldY = currentProcessedActorPtr->roomY = *(s16*)(trackPtr);
+                    trackPtr += 2;
+                    currentProcessedActorPtr->worldZ = currentProcessedActorPtr->roomZ = *(s16*)(trackPtr);
+                    trackPtr += 2;
+
+                    currentProcessedActorPtr->worldX -= (s16)((roomDataTable[currentRoom].worldX - roomDataTable[currentProcessedActorPtr->room].worldX) * 10);
+                    currentProcessedActorPtr->worldY += (s16)((roomDataTable[currentRoom].worldY - roomDataTable[currentProcessedActorPtr->room].worldY) * 10);
+                    currentProcessedActorPtr->worldZ += (s16)((roomDataTable[currentRoom].worldZ - roomDataTable[currentProcessedActorPtr->room].worldZ) * 10);
+
+                    currentProcessedActorPtr->zv.ZVX1 += currentProcessedActorPtr->roomX + currentProcessedActorPtr->stepX;
+                    currentProcessedActorPtr->zv.ZVX2 += currentProcessedActorPtr->roomX + currentProcessedActorPtr->stepX;
+                    currentProcessedActorPtr->zv.ZVY1 += currentProcessedActorPtr->roomY + currentProcessedActorPtr->stepY;
+                    currentProcessedActorPtr->zv.ZVY2 += currentProcessedActorPtr->roomY + currentProcessedActorPtr->stepY;
+                    currentProcessedActorPtr->zv.ZVZ1 += currentProcessedActorPtr->roomZ + currentProcessedActorPtr->stepZ;
+                    currentProcessedActorPtr->zv.ZVZ2 += currentProcessedActorPtr->roomZ + currentProcessedActorPtr->stepZ;
+
+                    currentProcessedActorPtr->speed = 0;
+                    currentProcessedActorPtr->direction = 0;
+                    currentProcessedActorPtr->rotate.numSteps = 0;
+                    currentProcessedActorPtr->positionInTrack += 5;
+
+                    break;
+                }
+            case TL_GOTO: // goToPosition
+                {
+                    int roomNumber = *(s16*)(trackPtr);
+                    int x;
+                    int y;
+                    int z;
+                    unsigned int distanceToPoint;
+
+                    trackPtr += 2;
+
+                    x = *(s16*)(trackPtr);
+                    trackPtr += 2;
+                    y = 0;
+                    z = *(s16*)(trackPtr);
+                    trackPtr += 2;
+
+                    if(roomNumber != currentProcessedActorPtr->room)
+                    {
+                        // TODO: fix bug here...
+                        x -= (roomDataTable[currentProcessedActorPtr->room].worldX - roomDataTable[roomNumber].worldX) * 10;
+                        z += (roomDataTable[currentProcessedActorPtr->room].worldZ - roomDataTable[roomNumber].worldZ) * 10;
+                    }
+
+                    distanceToPoint = GiveDistance2D( currentProcessedActorPtr->roomX + currentProcessedActorPtr->stepX,
+                        currentProcessedActorPtr->roomZ + currentProcessedActorPtr->stepZ,
+                        x,z );
+
+
+                    if(distanceToPoint >= DISTANCE_TO_POINT_TRESSHOLD) // not yet at position
+                    {
+                        int angleModif = CapObjet( currentProcessedActorPtr->roomX + currentProcessedActorPtr->stepX,
+                            currentProcessedActorPtr->roomZ + currentProcessedActorPtr->stepZ,
+                            currentProcessedActorPtr->beta,
+                            x,z );
+
+                        if((currentProcessedActorPtr->rotate.numSteps == 0) || (currentProcessedActorPtr->direction != angleModif))
+                        {
+                            InitRealValue(currentProcessedActorPtr->beta, currentProcessedActorPtr->beta - (angleModif * 64), 15, &currentProcessedActorPtr->rotate);
+                        }
+
+                        currentProcessedActorPtr->direction = angleModif;
+
+                        if(!angleModif)
+                        {
+                            currentProcessedActorPtr->rotate.numSteps = 0;
+                        }
+                        else
+                        {
+                            currentProcessedActorPtr->beta = updateActorRotation(&currentProcessedActorPtr->rotate);
+                        }
+                    }
+                    else // reached position
+                    {
+                        currentProcessedActorPtr->positionInTrack += 4;
+                    }
+
+                    break;
+                }
+            case TL_GOTO_3D: // goToPosition
+            {
+                int roomNumber = *(s16*)(trackPtr);
+                int x;
+                int y;
+                int z;
+                unsigned int distanceToPoint;
+
+                trackPtr += 2;
+
+                x = *(s16*)(trackPtr);
+                trackPtr += 2;
+                y = *(s16*)(trackPtr);
+                trackPtr += 2;
+                z = *(s16*)(trackPtr);
+                trackPtr += 2;
+                int time = *(s16*)(trackPtr);
+                trackPtr += 2;
+
+                if (roomNumber != currentProcessedActorPtr->room)
+                {
+                    // TODO: fix bug here...
+                    x -= (roomDataTable[currentProcessedActorPtr->room].worldX - roomDataTable[roomNumber].worldX) * 10;
+                    y += (roomDataTable[currentProcessedActorPtr->room].worldY - roomDataTable[roomNumber].worldY) * 10;
+                    z += (roomDataTable[currentProcessedActorPtr->room].worldZ - roomDataTable[roomNumber].worldZ) * 10;
+                }
+
+                // reached position? Use tolerance like TL_GOTO_3DX/3DZ (exact match can
+                // fail due to integer rounding in Y interpolation, causing permanent stuck)
+                if (abs(y - currentProcessedActorPtr->roomY) <= 100)
+                {
+                    int distance = GiveDistance2D(currentProcessedActorPtr->roomX + currentProcessedActorPtr->stepX, currentProcessedActorPtr->roomZ + currentProcessedActorPtr->stepZ, x, z);
+                    if (distance < DISTANCE_TO_POINT_TRESSHOLD) {
+                        currentProcessedActorPtr->positionInTrack += 6;
+                        break;
+                    }
+                }
+
+                {
+                    int direction = CapObjet(
+                        currentProcessedActorPtr->roomX + currentProcessedActorPtr->stepX,
+                        currentProcessedActorPtr->roomZ + currentProcessedActorPtr->stepZ,
+                        currentProcessedActorPtr->beta,
+                        x, z);
+
+                    if (currentProcessedActorPtr->YHandler.numSteps == 0)
+                    {
+                        InitRealValue(0, y - (currentProcessedActorPtr->roomY + currentProcessedActorPtr->stepY), time, &currentProcessedActorPtr->YHandler);
+                    }
+
+                    if ((currentProcessedActorPtr->rotate.numSteps == 0) || (currentProcessedActorPtr->direction != direction))
+                    {
+                        InitRealValue(currentProcessedActorPtr->beta, currentProcessedActorPtr->beta - (direction * 256), 60, &currentProcessedActorPtr->rotate);
+                    }
+
+                    currentProcessedActorPtr->direction = direction;
+
+                    if (!direction)
+                    {
+                        currentProcessedActorPtr->rotate.numSteps = 0;
+                    }
+                    else
+                    {
+                        currentProcessedActorPtr->beta = updateActorRotation(&currentProcessedActorPtr->rotate);
+                    }
+                }
+
+                break;
+            }
+            case TL_END: // stop
+                {
+                    currentProcessedActorPtr->speed = 0;
+                    currentProcessedActorPtr->trackNumber = -1;
+                    InitDeplacement(0,0);
+                    break;
+                }
+            case TL_REPEAT:
+                {
+                    currentProcessedActorPtr->positionInTrack = 0;
+                    break;
+                }
+            case TL_MARK: // MARK
+                {
+                    currentProcessedActorPtr->MARK = *(s16*)(trackPtr);
+                    trackPtr += 2;
+                    currentProcessedActorPtr->positionInTrack += 2;
+                    break;
+                }
+            case TL_WALK:
+                {
+                    currentProcessedActorPtr->speed = 4;
+                    currentProcessedActorPtr->positionInTrack++;
+                    break;
+                }
+            case TL_RUN:
+                {
+                    currentProcessedActorPtr->speed = 5;
+                    currentProcessedActorPtr->positionInTrack++;
+                    break;
+                }
+            case TL_STOP:
+                {
+                    currentProcessedActorPtr->speed = 0;
+                    currentProcessedActorPtr->positionInTrack++;
+                    break;
+                }
+            case TL_WAIT:
+                {
+                    currentProcessedActorPtr->speed = 0;
+                    break;
+                }
+            case TL_BACK:
+                {
+                    currentProcessedActorPtr->speed = -1;
+                    currentProcessedActorPtr->positionInTrack++;
+                    break;
+                }
+            case TL_SET_ANGLE: // TL_SET_ANGLE
+                {
+                    int betaDif = *(s16*)(trackPtr);
+                    trackPtr += 2;
+
+                    if(((currentProcessedActorPtr->beta - betaDif)&1023) > 512)
+                    {
+                        currentProcessedActorPtr->direction = 1; // left
+                    }
+                    else
+                    {
+                        currentProcessedActorPtr->direction = -1; // right
+                    }
+
+                    if(!currentProcessedActorPtr->rotate.numSteps)
+                    {
+                        InitRealValue(currentProcessedActorPtr->beta, betaDif, 120, &currentProcessedActorPtr->rotate);
+                    }
+
+                    currentProcessedActorPtr->beta = updateActorRotation(&currentProcessedActorPtr->rotate);
+
+                    if(currentProcessedActorPtr->beta == betaDif)
+                    {
+                        currentProcessedActorPtr->direction = 0;
+
+                        currentProcessedActorPtr->positionInTrack+=2;
+                    }
+
+                    break;
+                }
+            case TL_COL_OFF:
+                {
+                    currentProcessedActorPtr->dynFlags &= ~1;
+                    currentProcessedActorPtr->positionInTrack++;
+                    break;
+                }
+            case TL_COL_ON:
+                {
+                    currentProcessedActorPtr->dynFlags |= 1;
+                    currentProcessedActorPtr->positionInTrack++;
+                    break;
+                }
+            case TL_DEC_OFF: // background collision off
+                {
+                    currentProcessedActorPtr->objectType &= ~AF_TRIGGER;
+                    currentProcessedActorPtr->positionInTrack++;
+                    break;
+                }
+            case TL_DEC_ON: // background collision on
+                {
+                    currentProcessedActorPtr->objectType |= AF_TRIGGER;
+                    currentProcessedActorPtr->positionInTrack++;
+                    break;
+                }
+            case TL_MEMO_COOR:
+                {
+                    int objNum = currentProcessedActorPtr->indexInWorld;
+
+                    ListWorldObjets[objNum].x = currentProcessedActorPtr->roomX + currentProcessedActorPtr->stepX;
+                    ListWorldObjets[objNum].y = currentProcessedActorPtr->roomY + currentProcessedActorPtr->stepY;
+                    ListWorldObjets[objNum].z = currentProcessedActorPtr->roomZ + currentProcessedActorPtr->stepZ;
+
+                    currentProcessedActorPtr->positionInTrack++;
+
+                    break;
+                }
+            case TL_GOTO_3DX: // walk up/down stairs on X
+                {
+                    int x;
+                    int y;
+                    int z;
+                    int objX;
+                    int objY;
+                    int objZ;
+
+                    x = *(s16*)(trackPtr);
+                    trackPtr += 2;
+                    y = *(s16*)(trackPtr);
+                    trackPtr += 2;
+                    z = *(s16*)(trackPtr);
+                    trackPtr += 2;
+
+                    objX = ListWorldObjets[currentProcessedActorPtr->indexInWorld].x;
+                    objY = ListWorldObjets[currentProcessedActorPtr->indexInWorld].y;
+                    objZ = ListWorldObjets[currentProcessedActorPtr->indexInWorld].z;
+
+                    if(   currentProcessedActorPtr->roomY + currentProcessedActorPtr->stepY < y - 100
+                        ||  currentProcessedActorPtr->roomY + currentProcessedActorPtr->stepY > y + 100)
+                    {
+                        int propX = makeProportional(objY, y, x - objX, (currentProcessedActorPtr->roomX + currentProcessedActorPtr->stepX) - objX);
+
+                        int difY = propX - currentProcessedActorPtr->worldY;
+                        int angleModif;
+
+                        currentProcessedActorPtr->worldY += difY;
+                        currentProcessedActorPtr->roomY += difY;
+                        currentProcessedActorPtr->zv.ZVY1 += difY;
+                        currentProcessedActorPtr->zv.ZVY2 += difY;
+
+                        angleModif = CapObjet( currentProcessedActorPtr->roomX + currentProcessedActorPtr->stepX,
+                            currentProcessedActorPtr->roomZ + currentProcessedActorPtr->stepZ,
+                            currentProcessedActorPtr->beta,
+                            x,z );
+
+                        if(!currentProcessedActorPtr->rotate.numSteps || currentProcessedActorPtr->direction != angleModif)
+                        {
+                            InitRealValue(currentProcessedActorPtr->beta, currentProcessedActorPtr->beta - (angleModif<<8), 60, &currentProcessedActorPtr->rotate);
+                        }
+
+                        currentProcessedActorPtr->direction = angleModif;
+
+                        if(angleModif)
+                        {
+                            currentProcessedActorPtr->beta = updateActorRotation(&currentProcessedActorPtr->rotate);
+                        }
+                        else
+                        {
+                            currentProcessedActorPtr->rotate.numSteps = 0;
+                        }
+
+                    }
+                    else
+                    {
+                        int difY = y - currentProcessedActorPtr->worldY;
+
+                        currentProcessedActorPtr->stepY = 0;
+                        currentProcessedActorPtr->worldY += difY;
+                        currentProcessedActorPtr->roomY += difY;
+                        currentProcessedActorPtr->zv.ZVY1 += difY;
+                        currentProcessedActorPtr->zv.ZVY2 += difY;
+
+                        currentProcessedActorPtr->positionInTrack +=4;
+
+                    }
+
+                    break;
+                }
+            case TL_GOTO_3DZ:
+                {
+                    int x;
+                    int y;
+                    int z;
+                    int objX;
+                    int objY;
+                    int objZ;
+
+                    x = *(s16*)(trackPtr);
+                    trackPtr += 2;
+                    y = *(s16*)(trackPtr);
+                    trackPtr += 2;
+                    z = *(s16*)(trackPtr);
+                    trackPtr += 2;
+
+                    objX = ListWorldObjets[currentProcessedActorPtr->indexInWorld].x;
+                    objY = ListWorldObjets[currentProcessedActorPtr->indexInWorld].y;
+                    objZ = ListWorldObjets[currentProcessedActorPtr->indexInWorld].z;
+
+                    if(   currentProcessedActorPtr->roomY + currentProcessedActorPtr->stepY < y - 100
+                        ||  currentProcessedActorPtr->roomY + currentProcessedActorPtr->stepY > y + 100)
+                    {
+                        int propZ = makeProportional(objY, y, z - objZ, (currentProcessedActorPtr->roomZ + currentProcessedActorPtr->stepZ) - objZ);
+
+                        int difY = propZ - currentProcessedActorPtr->worldY;
+
+                        int angleModif;
+
+                        currentProcessedActorPtr->worldY += difY;
+                        currentProcessedActorPtr->roomY += difY;
+                        currentProcessedActorPtr->zv.ZVY1 += difY;
+                        currentProcessedActorPtr->zv.ZVY2 += difY;
+
+                        angleModif = CapObjet( currentProcessedActorPtr->roomX + currentProcessedActorPtr->stepX,
+                            currentProcessedActorPtr->roomZ + currentProcessedActorPtr->stepZ,
+                            currentProcessedActorPtr->beta,
+                            x,z );
+
+                        if(!currentProcessedActorPtr->rotate.numSteps || currentProcessedActorPtr->direction != angleModif)
+                        {
+                            InitRealValue(currentProcessedActorPtr->beta, currentProcessedActorPtr->beta - (angleModif<<8), 60, &currentProcessedActorPtr->rotate);
+                        }
+
+                        currentProcessedActorPtr->direction = angleModif;
+
+                        if(angleModif)
+                        {
+                            currentProcessedActorPtr->beta = updateActorRotation(&currentProcessedActorPtr->rotate);
+                        }
+                        else
+                        {
+                            currentProcessedActorPtr->rotate.numSteps = 0;
+                        }
+
+                    }
+                    else
+                    {
+                        int difY = y - currentProcessedActorPtr->worldY;
+
+                        currentProcessedActorPtr->stepY = 0;
+                        currentProcessedActorPtr->worldY += difY;
+                        currentProcessedActorPtr->roomY += difY;
+                        currentProcessedActorPtr->zv.ZVY1 += difY;
+                        currentProcessedActorPtr->zv.ZVY2 += difY;
+
+                        currentProcessedActorPtr->positionInTrack +=4;
+
+                    }
+
+                    break;
+                }
+            case TL_ANGLE:
+                {
+                    currentProcessedActorPtr->alpha = *(s16*)(trackPtr);
+                    trackPtr += 2;
+                    currentProcessedActorPtr->beta = *(s16*)(trackPtr);
+                    trackPtr += 2;
+                    currentProcessedActorPtr->gamma = *(s16*)(trackPtr);
+                    trackPtr += 2;
+
+                    currentProcessedActorPtr->direction = 0;
+
+                    currentProcessedActorPtr->positionInTrack +=4;
+
+                    break;
+                }
+            default:
+                {
+                    printf(TRACK_WARN "Unknown track macro %X" CON_RESET "\n",trackMacro);
+                    assert(0);
+                    break;
+                }
+            }
+
+            break;
+        }
+    }
+
+    currentProcessedActorPtr->beta &= 0x3FF;
+}
+

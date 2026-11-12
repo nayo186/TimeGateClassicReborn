@@ -1,0 +1,135 @@
+///////////////////////////////////////////////////////////////////////////////
+// Alone In The Dark Re-Haunted
+// Copyright (C) 2026 Infogrames / Spacefarer Retro Remasters LLC
+// Based on FITD by yaz0r, Re-haunted is released under GPL
+// Author: Jake Jackson (jake@spacefarergames.com)
+//
+// 2D sprite animation rendering and management
+///////////////////////////////////////////////////////////////////////////////
+
+#include "common.h"
+#include "anim2d.h"
+#include "hybrid.h"
+
+std::array<sAnim2d, 20> TabAnim2d;
+int NbAnim2D = 0;
+
+sHybrid* PtrAnim2D = nullptr;
+void load2dAnims(int cameraIdx) {
+    char name[16];
+
+    sprintf_s(name, sizeof(name), "ANIM%02d", g_currentFloor);
+
+    if (PtrAnim2D)
+    {
+        delete PtrAnim2D;
+        PtrAnim2D = nullptr;
+    }
+
+    unsigned char* rawAnim2D = (unsigned char*)loadPak(name, cameraIdx);
+    PtrAnim2D = new sHybrid(rawAnim2D, getPakSize(name, cameraIdx));
+    free(rawAnim2D);
+}
+
+// An object of the current room inside one of the animation's zones (its
+// box seen from above, as masks test it) is behind the animation
+static bool isBehindAnim2d(int actorIdx, const cameraHybridStruct& hybrid)
+{
+    const tObject& actor = ListObjets[actorIdx];
+    if (actor.room != currentRoom)
+        return false;
+    for (const rectTestStruct& rect : hybrid.rects)
+    {
+        if (actor.zv.ZVX1 / 10 >= rect.zoneX1 && actor.zv.ZVZ1 / 10 >= rect.zoneZ1 &&
+            actor.zv.ZVX2 / 10 <= rect.zoneX2 && actor.zv.ZVZ2 / 10 <= rect.zoneZ2)
+            return true;
+    }
+    return false;
+}
+
+void handleAnim2d() {
+
+    std::array<int, NUM_MAX_OBJECT> Index2 = Index;
+
+    // Only the animations that started (startAnim2d): a camera can list more
+    // zones than its ANIM file has animations
+    const int count = (std::min)(NbAnim2D, (int)currentCameraZoneList[NumCamera]->hybrids.size());
+    for (int i = 0; i < count; i++) {
+        auto& anim = TabAnim2d[i];
+        if (timer - anim.time >= anim.pAnim->flag) {
+            anim.frame++;
+            if (anim.frame == anim.pAnimation->anims.size()) {
+                anim.frame = 0;
+                anim.pAnim = anim.pAnimation->anims.begin();
+            }
+            else {
+                anim.pAnim++;
+            }
+            anim.time = timer;
+        }
+
+        // Drawn right after the nearest object behind it: the ones in front
+        // cover it (BUGS.md A13)
+        int j;
+        for (j = NbAffObjets + i - 1; j >= 0; j--) {
+            if (!(Index2[j] & 0x8000) && isBehindAnim2d(Index2[j], currentCameraZoneList[NumCamera]->hybrids[i])) {
+                break;
+            }
+        }
+
+        memmove(&Index2[j + 2], &Index2[j + 1], (NbAffObjets + i - j - 1) * sizeof(Index2[0]));
+        Index2[j + 1] = 0x8000 + i;
+    }
+
+    Index = Index2;
+}
+
+void animObjet2d() {
+    tObject* actorPtr = currentProcessedActorPtr;
+    actorPtr->flagEndAnim = 0;
+    if (actorPtr->ANIM == -1 || actorPtr->bodyNum < 0)
+        return;
+
+    sHybrid* pHybrid = HQR_Get(HQ_Hybrides, actorPtr->ANIM);
+    if (!pHybrid || actorPtr->bodyNum >= (int)pHybrid->animations.size())
+        return;
+    const auto& frames = pHybrid->animations[actorPtr->bodyNum].anims;
+    if (frames.empty() || actorPtr->frame >= (int)frames.size())
+        return;
+
+    // Each frame shows for its own number of ticks, as the cameras' ones
+    if (timer - actorPtr->memoTicks < frames[actorPtr->frame].flag)
+        return;
+    actorPtr->memoTicks = timer;
+    actorPtr->frame++;
+    if (actorPtr->frame < (int)frames.size())
+        return;
+
+    actorPtr->flagEndAnim = 1;
+    actorPtr->frame = 0;
+    if (!(actorPtr->animType & ANIM_REPEAT))
+        actorPtr->ANIM = -1;
+    FlagGenereAffList = 1;
+}
+
+void resetAnim2D() {
+    NbAnim2D = 0;
+}
+
+void startAnim2d(int index) {
+    if (!PtrAnim2D) return;
+    if (NbAnim2D >= (int)TabAnim2d.size()) return;
+    if (index < 0 || index >= (int)PtrAnim2D->animations.size() || PtrAnim2D->animations[index].anims.empty())
+    {
+        printf("[ANIM] 2D animation %d is not in this camera's ANIM file (%d), not shown\n",
+            index, (int)PtrAnim2D->animations.size());
+        return;
+    }
+    auto& anim = PtrAnim2D->animations[index];
+
+    TabAnim2d[NbAnim2D].pAnimation = &anim;
+    TabAnim2d[NbAnim2D].pAnim = anim.anims.begin();
+    TabAnim2d[NbAnim2D].frame = 0;
+    TabAnim2d[NbAnim2D].time = timer;
+    NbAnim2D++;
+}
