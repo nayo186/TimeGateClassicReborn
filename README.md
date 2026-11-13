@@ -6,7 +6,9 @@ Play **Time Gate: Knight's Chase** (Infogrames, 1996) on modern PCs, with its or
 
 > **This is an alpha.** The museum and the first scenes after the journey back in time, in the prison, are playable; the rest of the game is being played through now. If something behaves differently from the original, please [report it](#reporting-a-problem): it helps a lot.
 
-Time Gate: Classic Reborn is a C++17 source port of the Infogrames engine of *Alone in the Dark* and *Time Gate*. It shares its engine with [Alone in the Dark: Classic Reborn](https://github.com/nayo186/AloneInTheDarkClassicReborn), built on [FITD (Free in the Dark)](https://github.com/yaz0r/FITD) by yaz0r through [Alone in the Dark: Re-Haunted](https://github.com/spacefarergames/AloneInTheDarkReHaunted). Every part of *Time Gate* that differs from the *Alone in the Dark* games was compared with the original DOS executable, `TIMEGATE.EXE`, and made to work as it does.
+<p align="center"><img src="docs/images/launcher.jpg" alt="The launcher" width="70%"><br><sub>The launcher</sub></p>
+
+Time Gate: Classic Reborn is a C++17 source port of the Infogrames engine of *Alone in the Dark* and *Time Gate*. It shares its engine with [Alone in the Dark: Classic Reborn](https://github.com/nayo186/AloneInTheDarkClassicReborn), built on [FITD (Free in the Dark)](https://github.com/yaz0r/FITD) by yaz0r. Every part of *Time Gate* that differs from the *Alone in the Dark* games was compared with the original DOS executable, `TIMEGATE.EXE`, and made to work as it does.
 
 > **The game data is not included.** You need your own copy of *Time Gate: Knight's Chase* (the GOG edition, or the original CD). Nothing of the original game is in this repository.
 
@@ -32,7 +34,8 @@ The engine comes from FITD, which reverse engineered the DOS engine of *Alone in
 - **Fixes** to how the game looked and behaved in its source port: drawing order, masks, palettes, collisions, sounds, script orders and more (see `docs/baseline/BUGS.md`, letter G).
 - **Launcher** with the cover of the game, **Play**, and windows for the options, the controls and the audio. The menus are in English, French, German, Italian and Spanish.
 - **The game in five languages**: English, Spanish, German and Italian (GOG) and French (the original CD). With one edition installed, the others can be added as language folders (see [Languages](#languages)).
-- **Screen options**: resolution, aspect ratio, integer scaling, fullscreen, frame limit, VSync, and optional effects (edge smoothing, bloom, film grain, scanlines, ambient occlusion, smoother animations, sharper text).
+- **Screen options**: resolution, aspect ratio, integer scaling, fullscreen, frame limit, VSync, graphics engine, and optional effects (edge smoothing, bloom, film grain, scanlines, ambient occlusion, smoother animations, sharper text) (see [Options](#options)).
+- **Custom backgrounds**: export every background, full-screen picture, mask and video of the game, enlarge or repaint them, and the game uses yours (see [Modding](#modding)).
 - **Music**: the game's MIDI music played with a General MIDI soundfont; the one that comes with the game, or any other you add (see [Music](#music)).
 - **Controls**: keyboard and game controller (Xbox, PlayStation, Nintendo Switch Pro and most other USB or Bluetooth controllers), every action can be changed, with a picture of the controller.
 - **Separate volumes** for music and for voices and effects.
@@ -123,6 +126,27 @@ Every action can be changed in **Controls** (in the launcher, or in the game wit
 | Options window (F1) | F1 or Home | Back |
 | Fullscreen | F11 or Alt+Enter | — |
 
+## Options
+
+The launcher (its **Options**, **Controls** and **Audio** cards) and the in-game **F1** window share the same settings, saved in `aitd_remaster.cfg`:
+
+| Option | What it does |
+| --- | --- |
+| Frames per second, VSync | Smoothness; the game speed never depends on them |
+| Aspect ratio, resolution, fullscreen | How the 4:3 scene is shown |
+| Graphics engine | How the picture is drawn: Direct3D 11 or Vulkan on Windows, Vulkan or OpenGL ES on Android (Linux and macOS have one). Applies the next time the game starts; try the other one if the picture looks wrong |
+| Integer scaling | Every pixel of the game the same size, with black borders around (like pixel-perfect scaling in DOSBox): **Size**: Automatic, the largest that fits, or a size of your choice; **3D resolution**: how sharp the 3D models are, down to the original 320 × 200. Off by default; while it is on, Resolution is not used |
+| Edge smoothing | FXAA on the 3D models |
+| Bloom | A soft glow from the bright parts of the painted backgrounds |
+| Film grain | A light grain over the picture |
+| Scanlines | Thin dark lines over the picture, like an old CRT screen; under it, their intensity from 1 (soft) to 4 (strong) |
+| SSAO | Soft shadows where surfaces meet |
+| Smooth animations | Poses blended between the original key frames |
+| Enhanced text | The game's letters redrawn sharp at screen resolution |
+| Custom backgrounds | Uses your pictures instead of the originals (see [Modding](#modding)) |
+| Audio | Music volume, voices and effects volume |
+| Controls | The inputs of every action, modern left stick, controller vibration |
+
 ## Folders
 
 Nothing is ever written to the game folder. Everything the game writes goes to **`UserData`**, next to the programs:
@@ -136,12 +160,29 @@ UserData/
     ├── crash_log.txt      written if the game closes by itself
     ├── SoundFonts/        your soundfonts (see Music)
     ├── Languages/         other languages, one folder each (see Languages)
+    ├── Backgrounds/       your backgrounds, full-screen pictures and videos (see Modding)
+    ├── Masks/             your masks (see Modding)
+    ├── Exports/           what F1 exports: the game's own pictures, to use as a base
     └── GAME/              the game itself, if you keep it here
 ```
 
 `launcher.cfg` and `launcher.log`, next to the launcher, keep the launcher's own settings.
 
 **Everything in one folder (portable).** The game can also live inside `UserData\TimeGate\GAME`: copy your GOG installation there. With `UserData` and the programs in one folder, everything can be moved or copied to another computer or drive.
+
+## Modding
+
+The game's pictures can be replaced by your own, without changing any game file: everything goes into `UserData\TimeGate`, and removing your files brings back the originals.
+
+- **Backgrounds**: the painted scene of every camera, and the second picture some cameras show later in the game (the museum without the alarm beams, for example).
+- **Full-screen pictures**: the menu of coins, the save wall, the inventory's stained glass, the tarot of the difficulty and the other screens.
+- **Masks**: the parts of a background that pass in front of the characters, for when your picture moves or redraws them.
+- **Videos**: every video of the game, picture by picture, and its sound.
+- **Music**: any General MIDI soundfont (see [Music](#music)).
+
+In short: switch on **Custom backgrounds** in F1, export the game's own pictures with F1's **Export backgrounds**, **Export masks** and **Export sequences** (they go to `UserData\TimeGate\Exports`), enlarge or repaint them, and save them with the same name in `Backgrounds` or `Masks`. The game shows them at once, no restart needed.
+
+**All the details** (names, sizes, masks, videos and how to share a mod) are in the **[modding guide](MODDING.md)**.
 
 ## Reporting a problem
 
@@ -188,14 +229,13 @@ cmake --build TatouSource/build/linux-timegate
 
 **Development tools.** The CMake option `CLASSIC_REBORN_DEV_TOOLS` (on by default) builds tools that only work in debug mode (`debugMode = 1` in `launcher.cfg`). For a build to share with players, turn it off with `-DCLASSIC_REBORN_DEV_TOOLS=OFF`.
 
-**Releases.** The packages of each release are built by GitHub Actions (`.github/workflows/release.yml`): publishing a release with a tag like `v0.1.0-alpha.1` attaches `TimeGateClassicReborn-0.1.0-alpha.1-windows-x64.zip`, `...-linux-x64.tar.gz` and `...-macos.tar.gz` to it. Locally: `powershell -ExecutionPolicy Bypass -File tools\makeRelease.ps1 -Version 0.1.0 -Edition timegate` on Windows, and `CLASSIC_REBORN_EDITION=timegate tools/makeRelease.sh 0.1.0` on Linux.
+**Releases.** The packages of each release are built by GitHub Actions (`.github/workflows/release.yml`): publishing a release with a tag like `v0.1.0-alpha.1` attaches `TimeGateClassicReborn-0.1.0-alpha.1-windows-x64.zip`, `...-linux-x64.tar.gz`, `...-macos.tar.gz` and `...-android.apk` to it. Locally: `powershell -ExecutionPolicy Bypass -File tools\makeRelease.ps1 -Version 0.1.0 -Edition timegate` on Windows, and `CLASSIC_REBORN_EDITION=timegate tools/makeRelease.sh 0.1.0` on Linux.
 
 The code is organised in layers (`util/` → `platform/` → `core/` + `scripts/` → `remaster/`); `docs/MAPA_CODIGO.md` describes the folders and files, and `docs/DICCIONARIO.md` every public function (both in Spanish for now). See also [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Credits
 
 - **FITD (Free in the Dark)**: the reverse-engineered engine, by yaz0r and contributors: <https://github.com/yaz0r/FITD>
-- **Alone in the Dark: Re-Haunted**: the remaster the engine's port comes from, by Spacefarer Retro Remasters (Jake Jackson): <https://github.com/spacefarergames/AloneInTheDarkReHaunted>
 - **Time Gate: Knight's Chase** was created by Infogrames (1996). This project contains none of its data and is not affiliated with its rights holders.
 - Libraries: [bgfx](https://github.com/bkaradzic/bgfx), [SDL3](https://github.com/libsdl-org/SDL), [SoLoud](https://github.com/jarikomppa/soloud), [Dear ImGui](https://github.com/ocornut/imgui), [zlib](https://zlib.net), and [TinySoundFont](https://github.com/schellingb/TinySoundFont) by Bernhard Schelling, which plays the music.
 - **TimGM6mb**, the soundfont that comes with the game, by Tim Brechbill, under the GNU GPL v2 (`TimGM6mb-copyright.txt` next to the programs).

@@ -17,6 +17,7 @@
 #include "ui/menuFontData.h"
 #include "ui/menuGamepad.h"
 #include "advancedOptionsText.h"
+#include "rendererChoice.h"
 #include "controlsWindow.h"
 #include "audioWindow.h"
 #include "launcherSettings.h"
@@ -92,19 +93,19 @@ static Fonts loadFonts(float scale)
 {
     ImGui::GetIO().Fonts->Clear();
     Fonts fonts;
-    fonts.text = addModernFont(false, 14.0f * scale);
-    fonts.smallText = addModernFont(false, 12.0f * scale);
-    fonts.button = addModernFont(true, 16.0f * scale);
-    fonts.header = addModernFont(true, 20.0f * scale);
+    fonts.text = addModernFont(false, (14.0f + kFontBump) * scale);
+    fonts.smallText = addModernFont(false, (12.0f + kFontBump) * scale);
+    fonts.button = addModernFont(true, (16.0f + kFontBump) * scale);
+    fonts.header = addModernFont(true, (20.0f + kFontBump) * scale);
     std::string dir;
 #ifdef _WIN32
     char windir[MAX_PATH] = {};
     if (GetWindowsDirectoryA(windir, MAX_PATH) > 0)
         dir = std::string(windir) + "\\Fonts\\";
 #endif
-    fonts.title = addFont(dir.empty() ? "" : dir + "georgiab.ttf", 32.0f * scale);
+    fonts.title = addFont(dir.empty() ? "" : dir + "georgiab.ttf", (32.0f + kFontBump) * scale);
     if (!fonts.title)
-        fonts.title = addEmbeddedFont(true, 32.0f * scale);
+        fonts.title = addEmbeddedFont(true, (32.0f + kFontBump) * scale);
     return fonts;
 }
 #else
@@ -118,18 +119,18 @@ static Fonts loadFonts(float scale)
     if (GetWindowsDirectoryA(windir, MAX_PATH) > 0)
         dir = std::string(windir) + "\\Fonts\\";
 #endif
-    fonts.text = addFont(dir.empty() ? "" : dir + "georgia.ttf", 17.0f * scale);
-    fonts.button = addFont(dir.empty() ? "" : dir + "georgiab.ttf", 21.0f * scale);
-    fonts.header = addFont(dir.empty() ? "" : dir + "georgia.ttf", 30.0f * scale);
-    fonts.title = addFont(dir.empty() ? "" : dir + "georgiab.ttf", 40.0f * scale);
+    fonts.text = addFont(dir.empty() ? "" : dir + "georgia.ttf", (17.0f + kFontBump) * scale);
+    fonts.button = addFont(dir.empty() ? "" : dir + "georgiab.ttf", (21.0f + kFontBump) * scale);
+    fonts.header = addFont(dir.empty() ? "" : dir + "georgia.ttf", (30.0f + kFontBump) * scale);
+    fonts.title = addFont(dir.empty() ? "" : dir + "georgiab.ttf", (40.0f + kFontBump) * scale);
     if (!fonts.text)
     {
         // No Georgia (Linux): the project's own font, made to its measures
         logLine("Georgia font not found, using Gelasio");
-        fonts.text = addEmbeddedFont(false, 17.0f * scale);
-        fonts.button = addEmbeddedFont(true, 21.0f * scale);
-        fonts.header = addEmbeddedFont(false, 30.0f * scale);
-        fonts.title = addEmbeddedFont(true, 40.0f * scale);
+        fonts.text = addEmbeddedFont(false, (17.0f + kFontBump) * scale);
+        fonts.button = addEmbeddedFont(true, (21.0f + kFontBump) * scale);
+        fonts.header = addEmbeddedFont(false, (30.0f + kFontBump) * scale);
+        fonts.title = addEmbeddedFont(true, (40.0f + kFontBump) * scale);
     }
     if (!fonts.button) fonts.button = fonts.text;
     if (!fonts.header) fonts.header = fonts.text;
@@ -279,6 +280,38 @@ static void antialiasingCombo(int& value, float column)
         ImGui::EndCombo();
     }
     menu::helpWhenFocused(advText(AdvancedText::AntialiasingHelp));
+}
+
+// The graphics engine (graphics.renderer): one of this system's, by its name
+// (Shared/rendererChoice.h); the game uses it the next time it opens (BUGS.md C78)
+static const char* rendererLabel(int index)
+{
+    return renderer::kChoices[index].name;
+}
+
+static void rendererCombo(std::string& value, float column)
+{
+    if (!renderer::canChoose())
+        return;
+    const int current = renderer::choiceIndex(value.c_str());
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextColored(color(kText), "%s", advText(AdvancedText::Renderer));
+    helpMarker(advText(AdvancedText::RendererHelp));
+    comboColumn(column);
+    ImGui::SetNextItemWidth(-1.0f);
+    if (ImGui::BeginCombo("##renderer", rendererLabel(current)))
+    {
+        for (int i = 0; i < renderer::kChoiceCount; i++)
+        {
+            if (ImGui::Selectable(rendererLabel(i), current == i))
+            {
+                value = renderer::kChoices[i].id;
+                logLine("Advanced option: renderer=%s", value.c_str());
+            }
+        }
+        ImGui::EndCombo();
+    }
+    menu::helpWhenFocused(advText(AdvancedText::RendererHelp));
 }
 
 // Under Scanlines, indented: their darkness in 4 steps (grey while they are off)
@@ -443,6 +476,7 @@ static void drawAdvancedOptions(LauncherState& state, const Fonts& fonts, const 
     }
 
     optionCheckbox(AdvancedText::Fullscreen, AdvancedText::FullscreenHelp, &state.settings.fullscreen, "fullscreen");
+    rendererCombo(state.settings.renderer, column);
 
     // Integer scaling: its size and the 3D resolution that fits it, for the
     // main screen (where the game opens; in a smaller window the engine takes

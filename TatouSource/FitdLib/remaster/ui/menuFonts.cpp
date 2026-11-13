@@ -51,16 +51,16 @@ void menuFontsLoad()
     if (GetWindowsDirectoryA(windir, MAX_PATH) > 0)
         dir = std::string(windir) + "\\Fonts\\";
 #endif
-    s_fonts.text = addFont(dir.empty() ? "" : dir + "georgia.ttf", 17.0f * s_scale);
-    s_fonts.button = addFont(dir.empty() ? "" : dir + "georgiab.ttf", 21.0f * s_scale);
-    s_fonts.header = addFont(dir.empty() ? "" : dir + "georgia.ttf", 30.0f * s_scale);
+    s_fonts.text = addFont(dir.empty() ? "" : dir + "georgia.ttf", (17.0f + menu::kFontBump) * s_scale);
+    s_fonts.button = addFont(dir.empty() ? "" : dir + "georgiab.ttf", (21.0f + menu::kFontBump) * s_scale);
+    s_fonts.header = addFont(dir.empty() ? "" : dir + "georgia.ttf", (30.0f + menu::kFontBump) * s_scale);
     s_fonts.title = s_fonts.header;
     if (!s_fonts.text)
     {
         // No Georgia (Linux): the project's own font, made to its measures
-        s_fonts.text = menu::addEmbeddedFont(false, 17.0f * s_scale);
-        s_fonts.button = menu::addEmbeddedFont(true, 21.0f * s_scale);
-        s_fonts.header = menu::addEmbeddedFont(false, 30.0f * s_scale);
+        s_fonts.text = menu::addEmbeddedFont(false, (17.0f + menu::kFontBump) * s_scale);
+        s_fonts.button = menu::addEmbeddedFont(true, (21.0f + menu::kFontBump) * s_scale);
+        s_fonts.header = menu::addEmbeddedFont(false, (30.0f + menu::kFontBump) * s_scale);
         printf(MAIN_OK "Menu fonts: Georgia not found, Gelasio used\n");
     }
     if (!s_fonts.button) s_fonts.button = s_fonts.text;

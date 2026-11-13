@@ -1,6 +1,28 @@
 # Changelog
 
-Time Gate: Classic Reborn shares its engine with [Alone in the Dark: Classic Reborn](https://github.com/nayo186/AloneInTheDarkClassicReborn), which started from [Alone in the Dark: Re-Haunted](https://github.com/spacefarergames/AloneInTheDarkReHaunted) by Spacefarer Retro Remasters and [FITD](https://github.com/yaz0r/FITD) by yaz0r. The history of the engine is in those repositories; this one starts with the first release of *Time Gate*. Each fix is explained, with its cause, in `docs/baseline/BUGS.md` (letter G).
+Time Gate: Classic Reborn shares its engine with [Alone in the Dark: Classic Reborn](https://github.com/nayo186/AloneInTheDarkClassicReborn), built on [FITD](https://github.com/yaz0r/FITD) by yaz0r. The history of the engine is in those repositories; this one starts with the first release of *Time Gate*. Each fix is explained, with its cause, in `docs/baseline/BUGS.md` (letter G).
+
+## v0.1.0-alpha.3 (2026-11-13)
+
+A choice of graphics engine, fixes on Android, and a guide for modders.
+
+**Options**
+
+- New **Graphics engine** option in the launcher (**Options**) and in F1: Direct3D 11 or Vulkan on Windows, Vulkan or OpenGL ES on Android. It applies the next time the game starts (C78).
+
+**The game**
+
+- Loading a game while blood or sparks were on screen lost for good part of the small block of memory that the game keeps for those effects. After many loads they could stop showing (C76).
+
+**Android (experimental)**
+
+- Bigger text in the launcher and F1 menus, easier to read on a phone (C77).
+- A touch on the on-screen buttons (Start, A, B, the D-pad...) also moved the menus' pointer to where the button is, and could choose the wrong entry of a menu. Now a touch on them only presses the button (C79).
+
+**Documents**
+
+- A **modding guide** ([MODDING.md](MODDING.md)): how to export and replace the backgrounds, the second pictures of some cameras, the full-screen pictures, the masks and the videos (picture by picture, and their sound).
+- The README has a picture of the launcher, the table of options and a Modding section.
 
 ## v0.1.0-alpha.2 (2026-11-13)
 
