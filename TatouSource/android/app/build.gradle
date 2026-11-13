@@ -6,13 +6,22 @@ plugins {
 
 // The version (the release tag without its v, -PclassicRebornVersion=1.6.0;
 // "dev" builds never look for updates, Launcher/updater.h) and Android's
-// number for it, which must grow with each release: 1.6.0 -> 10600
+// number for it, which must grow with each release: the version times 100
+// and its stage (alpha N: N, beta N: 30 + N, rc N: 60 + N, final: 99), so
+// 0.1.0-alpha.2 -> 10002 and 1.7.4 -> 1070499 (Time Gate's alphas each
+// got the same number before; Alone's 1.7.3 was 10703, still below)
 def classicRebornVersion = project.findProperty("classicRebornVersion") ?: "dev"
 def versionNumber = { String version ->
     def parts = version.tokenize('.-')
     if (parts.size() < 3 || !parts[0].isInteger() || !parts[1].isInteger() || !parts[2].isInteger())
         return 1
-    return Math.max(1, parts[0].toInteger() * 10000 + parts[1].toInteger() * 100 + parts[2].toInteger())   // never 0 (0.0.0-check)
+    def base = parts[0].toInteger() * 10000 + parts[1].toInteger() * 100 + parts[2].toInteger()
+    def stage = 99
+    if (parts.size() >= 4) {
+        def number = (parts.size() >= 5 && parts[4].isInteger()) ? Math.min(parts[4].toInteger(), 29) : 0
+        stage = ["alpha": 0, "beta": 30, "rc": 60].getOrDefault(parts[3], 0) + number
+    }
+    return Math.max(1, base * 100 + stage)   // never 0 (0.0.0-check)
 }
 
 // The project's signing key: Android only updates an app with a new one
@@ -20,12 +29,20 @@ def versionNumber = { String version ->
 // or on the PC that builds it; without it, Android's debug key
 def keystore = System.getenv("CLASSIC_REBORN_KEYSTORE")
 
+// The product (Shared/edition.h): "alone", Alone in the Dark: Classic Reborn,
+// or "timegate", Time Gate: Classic Reborn (-PclassicRebornEdition=timegate).
+// Each is its own app (its id, name and icon), so both fit on one phone.
+def classicRebornEdition = project.findProperty("classicRebornEdition") ?: "alone"
+if (!(classicRebornEdition in ["alone", "timegate"]))
+    throw new GradleException("classicRebornEdition must be alone or timegate, not " + classicRebornEdition)
+def timeGate = classicRebornEdition == "timegate"
+
 android {
     namespace = "com.classicreborn.game"
     compileSdkVersion 35
     ndkVersion "27.2.12479018"
     defaultConfig {
-        applicationId "com.classicreborn.game"
+        applicationId timeGate ? "com.classicreborn.timegate" : "com.classicreborn.game"
         minSdkVersion 24
         targetSdkVersion 35
         versionCode versionNumber(classicRebornVersion)
@@ -33,7 +50,8 @@ android {
         externalNativeBuild {
             cmake {
                 arguments "-DANDROID_STL=c++_static", "-DCLASSIC_REBORN_DEV_TOOLS=OFF",
-                          "-DCLASSIC_REBORN_VERSION=" + classicRebornVersion
+                          "-DCLASSIC_REBORN_VERSION=" + classicRebornVersion,
+                          "-DCLASSIC_REBORN_EDITION=" + classicRebornEdition
                 targets "Fitd"
                 abiFilters 'arm64-v8a'
             }
@@ -65,6 +83,12 @@ android {
     sourceSets.main {
         // SDL's Java classes, used as they come
         java.srcDirs += ['../../ThirdParty/SDL/android-project/app/src/main/java']
+        if (timeGate) {
+            // Its own name and icon, and its music's soundfont inside the
+            // app (platform/midiMusic.cpp reads it with SDL)
+            res.srcDirs = ['src/timegate/res']
+            assets.srcDirs = ['../../FitdLib/assets/soundfonts']
+        }
     }
     externalNativeBuild {
         cmake {

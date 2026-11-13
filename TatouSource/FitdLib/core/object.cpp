@@ -85,6 +85,10 @@ int InitObjet(int body, int typeZv, int hardZvIdx, s16 objectType, int x, int y,
     }
     actorPtr->fireAlpha = 0;
     actorPtr->zvFollowsAnim = false;
+    // TIMEGATE.EXE 191EC-19204
+    actorPtr->chaseLegs = 0;
+    actorPtr->chaseTargetX = 0;
+    actorPtr->chaseTargetZ = 0;
 
     actorPtr->rotate.startValue = 0;
     actorPtr->rotate.endValue = 0;

@@ -357,8 +357,8 @@ inline const char* advancedText(AdvancedText text, int language)
           "Enregistre tous les décors en PNG, à modifier ou agrandir.",
           "Salva tutti gli sfondi in PNG, da modificare o ampliare.",
           "Speichert alle Hintergründe als PNG zum Bearbeiten oder Vergrößern." },
-        // ExportWorking
-        { "Exporting backgrounds...", "Exportando fondos...", "Export des décors...", "Esportazione sfondi...", "Hintergründe werden exportiert..." },
+        // ExportWorking (backgrounds, masks and sequences)
+        { "Exporting...", "Exportando...", "Export en cours...", "Esportazione...", "Wird exportiert..." },
         // ExportDone
         { "Backgrounds exported",
           "Fondos exportados",

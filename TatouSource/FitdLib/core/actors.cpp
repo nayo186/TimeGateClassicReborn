@@ -170,6 +170,14 @@ void InitDeplacement(int trackMode, int trackNumber)
 
     switch (trackMode)
     {
+    // Time Gate's mode 5 (and 6) keep their target as mode 2 (TIMEGATE.EXE
+    // 176C1). Not kept, the knight of the cells had none: he walked anywhere
+    // and into the cells instead of his round (BUGS.md G49)
+    case 5:
+    case 6:
+        if (g_gameId != TIMEGATE)
+            break;
+        [[fallthrough]];
     case 2:
     {
         currentProcessedActorPtr->trackNumber = trackNumber;

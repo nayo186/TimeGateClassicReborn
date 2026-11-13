@@ -10,6 +10,7 @@
 #include "common.h"
 #include "consoleLog.h"
 #include "modernStick.h"
+#include "timeGatePath.h"
 #include "math.h"
 #include <algorithm>
 #include <array>
@@ -278,6 +279,71 @@ static bool quickTurn()
     return true;
 }
 
+// A point of the floor's grid (8 map units) from a point of a room, as
+// TIMEGATE.EXE 17C6E-17CD9 works it out
+static int wayGridX(int roomX, const roomDataStruct& room)
+{
+    return (roomX / 10 + room.worldX) >> 3;
+}
+
+static int wayGridZ(int roomZ, const roomDataStruct& room)
+{
+    return ((-roomZ) / 10 + room.worldZ) >> 3;
+}
+
+// Time Gate's movement mode 5 (TIMEGATE.EXE 17BFB): towards the end of the
+// first leg of the way to its target, round the obstacles; without a way,
+// towards the end of the last one found (BUGS.md G49)
+static void followWay()
+{
+    tObject* self = currentProcessedActorPtr;
+    const int targetIdx = (self->trackNumber >= 0 && self->trackNumber < (int)ListWorldObjets.size())
+        ? ListWorldObjets[self->trackNumber].objIndex : -1;
+    if (targetIdx == -1 || self->room < 0 || ListObjets[targetIdx].room < 0)
+    {
+        self->direction = 0;
+        self->speed = 0;
+        self->beta &= 0x3FF;
+        return;
+    }
+    tObject* target = &ListObjets[targetIdx];
+    const roomDataStruct& targetRoom = roomDataTable[target->room];
+    const roomDataStruct& selfRoom = roomDataTable[self->room];
+
+    int nextX = 0;
+    int nextZ = 0;
+    const s16 legsBefore = self->chaseLegs;
+    self->chaseLegs = (s16)timeGateFindPath(wayGridX(self->roomX, selfRoom), wayGridZ(self->roomZ, selfRoom),
+        wayGridX(target->roomX, targetRoom), wayGridZ(target->roomZ, targetRoom), nextX, nextZ);
+    if (self->chaseLegs != legsBefore)
+        printf(MAIN_TAG "Way of object %d (room %d) to object %d: %d legs, next point %d,%d\n", self->indexInWorld,
+            self->room, target->indexInWorld, self->chaseLegs, nextX, nextZ);
+
+    // In the room on screen the points are those of the current room (world
+    // coordinates), else those of the chaser's room
+    const bool onScreen = targetIdx == currentCameraTargetActor || target->room == currentRoom;
+    const roomDataStruct& room = onScreen ? targetRoom : selfRoom;
+    if (self->chaseLegs)
+    {
+        self->chaseTargetX = (s16)((nextX * 8 - room.worldX) * 10);
+        self->chaseTargetZ = (s16)(-(nextZ * 8 - room.worldZ) * 10);
+    }
+    const int x = onScreen ? self->worldX : self->roomX;
+    const int z = onScreen ? self->worldZ : self->roomZ;
+    const int direction = CapObjet(x, z, self->beta, self->chaseTargetX, self->chaseTargetZ);
+    if (self->rotate.numSteps == 0 || self->direction != direction)
+        InitRealValue(self->beta, self->beta - direction * 256, 100, &self->rotate);
+    self->direction = direction;
+    if (direction == 0)
+        self->rotate.numSteps = 0;
+    else
+        self->beta = updateActorRotation(&self->rotate);
+    // The original sets 10 (+0x82); the engine's walk adds the speed to the
+    // animation's step (anim.cpp), so the speed of mode 2 is kept
+    self->speed = 4;
+    self->beta &= 0x3FF;
+}
+
 void processTrack(void)
 {
     switch(currentProcessedActorPtr->trackMode)
@@ -333,11 +399,19 @@ void processTrack(void)
 
             break;
         }
-    // Time Gate's mode 5 (TIMEGATE.EXE 17BFB) follows its target on a path
-    // found over a grid of the rooms (304B0); not written yet, it follows it
-    // straight, as mode 2. Taken for "manual" before, the chasing enemies
-    // turned round and stood still (BUGS.md G42)
+    // Time Gate's mode 5 (TIMEGATE.EXE 17BFB) follows its target on a way
+    // found round the floor's obstacles (timeGatePath.cpp). Taken for
+    // "manual" before, the chasing enemies turned round and stood still
+    // (BUGS.md G42); followed straight as mode 2, they stuck on walls and
+    // their scripts, which ask how many legs the way has, took them for
+    // arrived (BUGS.md G49)
     case 5:
+        if (g_gameId == TIMEGATE)
+        {
+            followWay();
+            break;
+        }
+        [[fallthrough]];
     case 2: // follow
         {
             int followedActorIdx = ListWorldObjets[currentProcessedActorPtr->trackNumber].objIndex;

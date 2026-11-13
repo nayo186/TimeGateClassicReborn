@@ -27,6 +27,7 @@ extern "C" { extern char homePath[512]; }
 static std::string s_folder;
 static CdImage s_image;
 static bool s_hasImage = false;
+static const char* s_imageFolder = kLanguageImageFolder;   // the language's folder in its image
 static std::mutex s_cacheMutex;
 static std::map<std::string, std::vector<unsigned char>> s_cache;   // files read from the language's image
 static std::map<std::string, std::vector<unsigned char>> s_discCache;   // files read from the game's CD image
@@ -43,6 +44,7 @@ bool selectLanguagePack(const std::string& language)
 {
     s_folder.clear();
     s_hasImage = false;
+    s_imageFolder = kLanguageImageFolder;
     const char* name = languagePackName(language.c_str());
     if (!*name)
         return false;
@@ -86,6 +88,15 @@ bool selectTimeGateLanguagePack(const std::string& language)
         printf(MAIN_WARN "Language folder %s not found: the installed language" CON_RESET "\n", folder.c_str());
         return false;
     }
+    // Loose files, or the language's CD image as it came (BUGS.md G46)
+    if (!pathExists(matchFileCase(folder + "FRANCAIS.PAK")) && openTimeGateLanguageImage(fs::u8path(folder), s_image))
+    {
+        s_folder = folder;
+        s_hasImage = true;
+        s_imageFolder = kTimeGateImageFolder;
+        printf(MAIN_OK "Language CD image: %s (%d files)\n", s_image.path().string().c_str(), s_image.fileCount());
+        return true;
+    }
     const std::string missing = missingTimeGateLanguageFiles(fs::u8path(folder));
     if (!missing.empty())
     {
@@ -96,17 +107,30 @@ bool selectTimeGateLanguagePack(const std::string& language)
     return true;
 }
 
+// Time Gate's videos are asked for as cd/TIMEGATE/ANn.MUX (the CD's folder
+// copied): on the CD image they are in its TIMEGATE folder; the name in it,
+// else nullptr
+static const char* imageVideoName(const char* name)
+{
+    static const char prefix[] = "cd/TIMEGATE/";
+    const size_t length = sizeof(prefix) - 1;
+    for (size_t i = 0; i < length; i++)
+        if (!name[i] || toupper((unsigned char)name[i]) != toupper((unsigned char)prefix[i]))
+            return nullptr;
+    return name + length;
+}
+
 // A file of the language's CD image, read once and kept; null if not there
 static const std::vector<unsigned char>* imageFile(const char* name)
 {
-    if (!s_hasImage || !s_image.hasFile(kLanguageImageFolder, name))
+    if (!s_hasImage || !s_image.hasFile(s_imageFolder, name))
         return nullptr;
     std::lock_guard<std::mutex> lock(s_cacheMutex);
     auto found = s_cache.find(name);
     if (found == s_cache.end())
     {
         std::vector<unsigned char> data;
-        if (!s_image.readFile(kLanguageImageFolder, name, data))
+        if (!s_image.readFile(s_imageFolder, name, data))
             return nullptr;
         found = s_cache.emplace(name, std::move(data)).first;
     }
@@ -158,6 +182,14 @@ bool DataFile::open(const char* name)
         {
             m_file = fopen(loose.c_str(), "rb");
             return m_file != nullptr;
+        }
+        // A video of the image: read for this time only (they are big and
+        // each plays once; kept, they would fill the phone's memory)
+        const char* video = s_hasImage ? imageVideoName(name) : nullptr;
+        if (video && s_image.hasFile(s_imageFolder, video) && s_image.readFile(s_imageFolder, video, m_own))
+        {
+            m_memory = &m_own;
+            return true;
         }
         if ((m_memory = imageFile(name)))
             return true;
@@ -214,4 +246,5 @@ void DataFile::close()
     m_file = nullptr;
     m_memory = nullptr;
     m_position = 0;
+    std::vector<unsigned char>().swap(m_own);
 }

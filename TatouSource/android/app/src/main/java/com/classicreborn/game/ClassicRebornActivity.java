@@ -56,8 +56,9 @@ public class ClassicRebornActivity extends SDLActivity {
         IMPORT_KIND_NARRATOR = 3, IMPORT_KIND_PICTURES = 4;
     private static volatile int sImportKind = IMPORT_KIND_NONE;
     private static String sImportUserData = "";
-    private static int sImportGame = 0;   // the launcher's tab: 0 AITD1, 1 AITD2, 2 AITD3
-    private static final String[] GAME_FOLDERS = { "AITD1", "AITD2", "AITD3" };
+    private static int sImportGame = 0;   // the launcher's tab: 0 AITD1, 1 AITD2, 2 AITD3, 3 Time Gate
+    private static final String[] GAME_FOLDERS = { "AITD1", "AITD2", "AITD3", "TimeGate" };
+    private static final int TIME_GATE = 3;
     // The language PAKs of AITD3 and their folder in Languages (Shared/languageFolder.h)
     private static final String[][] LANGUAGES = {
         { "FRANCAIS.PAK", "French" }, { "ITALIANO.PAK", "Italian" },
@@ -91,7 +92,7 @@ public class ClassicRebornActivity extends SDLActivity {
         if (activity == null || sImportState == IMPORT_PICKING || sImportState == IMPORT_COPYING)
             return;
         sImportUserData = userData;
-        sImportGame = Math.max(0, Math.min(2, game));
+        sImportGame = Math.max(0, Math.min(TIME_GATE, game));
         sImportKind = IMPORT_KIND_NONE;
         sImportCopied = 0;
         sImportTotal = 0;
@@ -374,6 +375,8 @@ public class ClassicRebornActivity extends SDLActivity {
     // Manuals (PDF) are left out. False if nothing was recognised (nothing is
     // copied).
     private boolean importFolder(Uri tree) throws Exception {
+        if (sImportGame == TIME_GATE)
+            return importTimeGate(tree);
         List<Entry> top = children(tree, DocumentsContract.getTreeDocumentId(tree));
         String name = folderName(tree);
         File userData = new File(sImportUserData);
@@ -428,6 +431,11 @@ public class ClassicRebornActivity extends SDLActivity {
             sImportKind = gameData ? IMPORT_KIND_GAME : IMPORT_KIND_PICTURES;
         }
 
+        return copyPlan(tree, name, plan);
+    }
+
+    // Copies what was planned, counting the bytes for the launcher's progress
+    private boolean copyPlan(Uri tree, String name, List<Copy> plan) throws Exception {
         long total = 0;
         for (Copy copy : plan)
             total += sizeOf(tree, copy.entry);
@@ -442,6 +450,90 @@ public class ClassicRebornActivity extends SDLActivity {
     }
 
     // Every entry but manuals into one folder
+    // Time Gate: Classic Reborn (only this game), what the chosen folder holds:
+    // - the PC's portable UserData/TimeGate (GAME, Languages, Saves...) or
+    //   the whole UserData with a TimeGate folder inside: as it is;
+    // - the game (a GOG installation or a copy: its PURSUIT.PAK), with the
+    //   Languages, Saves and SoundFonts it has: TimeGate/GAME;
+    // - a language pack (a language's texts and voices without the game's
+    //   floors, PURSUIT.PAK, or its CD image): TimeGate/Languages/<the folder's name>, the
+    //   name the launcher shows (its texts file is FRANCAIS.PAK in several
+    //   languages, so it does not tell the language);
+    // - several language packs at once (a folder of them, such as Languages):
+    //   each into TimeGate/Languages/<its name>;
+    // - only a Backgrounds or Masks folder: into TimeGate.
+    private boolean importTimeGate(Uri tree) throws Exception {
+        List<Entry> top = children(tree, DocumentsContract.getTreeDocumentId(tree));
+        String name = folderName(tree);
+        File gameFolder = new File(new File(sImportUserData), "TimeGate");
+        List<Copy> plan = new ArrayList<>();
+        Entry inner = find(top, "TimeGate");
+        if (inner != null && inner.folder) {
+            top = children(tree, inner.id);   // the whole UserData: its TimeGate
+            name = inner.name;
+        }
+        boolean game = find(top, "PURSUIT.PAK") != null;
+        boolean texts = isTimeGateLanguage(top);
+        if (game || find(top, "GAME") != null) {
+            sImportKind = IMPORT_KIND_GAME;
+            if (game) {
+                for (Entry entry : top)
+                    if (!entry.folder && !entry.name.toLowerCase(Locale.ROOT).endsWith(".pdf"))
+                        plan.add(new Copy(entry, new File(gameFolder, "GAME")));
+                Entry cd = find(top, "CD");   // the videos
+                if (cd != null && cd.folder)
+                    plan.add(new Copy(cd, new File(gameFolder, "GAME")));
+            } else
+                for (Entry entry : children(tree, find(top, "GAME").id))
+                    plan.add(new Copy(entry, new File(gameFolder, "GAME")));
+            for (Entry entry : top)
+                if (entry.folder && (isExtraFolder(entry) || entry.name.equalsIgnoreCase("SoundFonts")))
+                    plan.add(new Copy(entry, gameFolder));
+        } else if (texts) {
+            sImportKind = IMPORT_KIND_LANGUAGE;
+            addAll(plan, top, new File(new File(gameFolder, "Languages"), name));
+        } else if (name.equalsIgnoreCase("Backgrounds") || name.equalsIgnoreCase("Masks")) {
+            sImportKind = IMPORT_KIND_PICTURES;
+            addAll(plan, top, new File(gameFolder, name.equalsIgnoreCase("Masks") ? "Masks" : "Backgrounds"));
+        } else if (planLanguagePacks(tree, top, new File(gameFolder, "Languages"), plan)
+                || (find(top, "Languages") != null && find(top, "Languages").folder
+                    && planLanguagePacks(tree, children(tree, find(top, "Languages").id), new File(gameFolder, "Languages"), plan))) {
+            sImportKind = IMPORT_KIND_LANGUAGE;
+        } else {
+            Log.i(TAG, "Nothing of Time Gate to import in " + name);
+            return false;
+        }
+        return copyPlan(tree, name, plan);
+    }
+
+    // Time Gate: a language pack: its texts without the game (PURSUIT.PAK),
+    // or the language's CD image as it came (.iso, or .bin with its .cue:
+    // the French CD, BUGS.md G46)
+    private static boolean isTimeGateLanguage(List<Entry> entries) {
+        if (find(entries, "PURSUIT.PAK") != null)
+            return false;
+        for (String[] pair : LANGUAGES)
+            if (find(entries, pair[0]) != null)
+                return true;
+        return hasExtension(entries, ".iso", ".bin", ".img");
+    }
+
+    // Time Gate: the folders among entries that are a language pack (its
+    // texts without the game), each into languages/<its name>; false if none
+    private boolean planLanguagePacks(Uri tree, List<Entry> entries, File languages, List<Copy> plan) {
+        boolean found = false;
+        for (Entry entry : entries) {
+            if (!entry.folder)
+                continue;
+            List<Entry> inside = children(tree, entry.id);
+            if (isTimeGateLanguage(inside)) {
+                addAll(plan, inside, new File(languages, entry.name));
+                found = true;
+            }
+        }
+        return found;
+    }
+
     private static void addAll(List<Copy> plan, List<Entry> entries, File into) {
         for (Entry entry : entries)
             if (entry.folder || !entry.name.toLowerCase(Locale.ROOT).endsWith(".pdf"))

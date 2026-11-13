@@ -10,6 +10,7 @@
 #include "common.h"
 #include "coreHooks.h"
 #include "languagePack.h"
+#include "timeGatePath.h"
 
 u32 g_currentFloorRoomRawDataSize = 0;
 u32 g_currentFloorCameraRawDataSize;
@@ -101,9 +102,10 @@ void LoadEtage(int floorNumber)
             {
                 roomData = (u8*)CheckLoadMallocPak(baseName, i);
             }
-            else {
-                assert(0);
-            }
+            // Neither ETAGEnn nor SALnn: no room (it asserted even after
+            // ETAGEnn was read, so the Android test build, with asserts,
+            // closed on Time Gate's first floor, BUGS.md G44)
+            assert(roomData);
         }
         else
         {
@@ -481,6 +483,11 @@ void LoadEtage(int floorNumber)
             }
         }
     }
+
+    // Time Gate: the obstacles for the ways of the chasers (TIMEGATE.EXE
+    // 30700; BUGS.md G49)
+    if (g_gameId == TIMEGATE)
+        timeGatePathLoadFloor(floorNumber);
 
     // globalCameraDataTable = (cameraDataStruct*)realloc(globalCameraDataTable,sizeof(cameraDataStruct)*numGlobalCamera);
 

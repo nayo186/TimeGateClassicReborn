@@ -53,5 +53,6 @@ public:
 private:
     FILE* m_file = nullptr;
     const std::vector<unsigned char>* m_memory = nullptr;   // a file of the CD image
+    std::vector<unsigned char> m_own;   // one read for this file only (a video: not kept)
     long m_position = 0;
 };

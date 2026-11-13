@@ -10,7 +10,8 @@
 # To publish a version: create a release on GitHub with a tag like
 # v0.1.0-alpha.1; TimeGateClassicReborn-0.1.0-alpha.1-windows-x64.zip,
 # TimeGateClassicReborn-0.1.0-alpha.1-linux-x64.tar.gz and
-# TimeGateClassicReborn-0.1.0-alpha.1-macos.tar.gz appear in it when the
+# TimeGateClassicReborn-0.1.0-alpha.1-macos.tar.gz and
+# TimeGateClassicReborn-0.1.0-alpha.1-android.apk appear in it when the
 # builds end. It can also be run by hand for an existing tag.
 
 name: Release zip
@@ -101,3 +102,43 @@ jobs:
 
       - name: Attach the package to the release
         run: gh release upload "$TAG" "release/TimeGateClassicReborn-${TAG#v}-macos.tar.gz" --clobber
+
+  # Android 7 or newer, arm64 phones (experimental): its own app, Time Gate:
+  # Classic Reborn, beside Alone's. Signed with the project's key (secrets
+  # ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD): Android only
+  # updates the app with one signed with the same key
+  android:
+    runs-on: ubuntu-24.04
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Install JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install the NDK and CMake of the project
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018" "cmake;3.22.1" > /dev/null
+
+      - name: Build and sign
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/classicreborn.jks"
+          export CLASSIC_REBORN_KEYSTORE="$RUNNER_TEMP/classicreborn.jks"
+          export CLASSIC_REBORN_KEYSTORE_PASSWORD="$KEYSTORE_PASSWORD"
+          export CLASSIC_REBORN_KEY_ALIAS=classicreborn
+          export CLASSIC_REBORN_KEY_PASSWORD="$KEYSTORE_PASSWORD"
+          CLASSIC_REBORN_EDITION=timegate bash tools/makeRelease-android.sh "${TAG#v}"
+          rm -f "$RUNNER_TEMP/classicreborn.jks"
+
+      - name: Attach the app to the release
+        run: gh release upload "$TAG" "release/TimeGateClassicReborn-${TAG#v}-android.apk" --clobber

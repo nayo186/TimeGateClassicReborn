@@ -342,14 +342,19 @@ void stopChannelSound(int channel)
 	s_channelLoop[channel] = false;
 }
 
+// A volume of the scripts, 0 to 32767, as 0 to 1
+static float channelLevel(int volume)
+{
+	return volume <= 0 ? 0.0f : volume >= 32767 ? 1.0f : volume / 32767.0f;
+}
+
 void setChannelSoundVolume(int channel, int volume)
 {
 	channel = timeGateChannel(channel);
-	const float level = volume <= 0 ? 0.0f : volume >= 32767 ? 1.0f : volume / 32767.0f;
-	osystem_setChannelVolume(channel, level);
+	osystem_setChannelVolume(channel, channelLevel(volume));
 }
 
-void playChannelSound(int num, int channel, bool looping)
+void playChannelSound(int num, int channel, bool looping, int volume)
 {
 	channel = timeGateChannel(channel);
 	if (num < 0)
@@ -373,7 +378,7 @@ void playChannelSound(int num, int channel, bool looping)
 		logSample("Sample missing", num);
 		return;
 	}
-	osystem_playChannelSample(channel, ptr, size, looping);
+	osystem_playChannelSample(channel, ptr, size, looping, channelLevel(volume));
 	s_channelSample[channel] = num;
 	s_channelLoop[channel] = looping;
 	s_channelTick[channel] = timer;

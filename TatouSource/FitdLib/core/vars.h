@@ -190,6 +190,12 @@ struct tObject // used to read data from file too
     s16 emitModel; // kind of flash at the gun's emit point when it fires (LM_FIRE, 3-8, BUGS.md A44)
     s16 fireAlpha; // AITD3: the shot's angle up or down (FIRE_UP_DOWN; 0 with FIRE, BUGS.md T24)
     bool zvFollowsAnim; // its box comes from its animated pose (DO_REAL_ZV), BUGS.md T29
+    // Time Gate's movement mode 5 (TIMEGATE.EXE 17BFB; BUGS.md G49): the legs
+    // of its way (+0xB6, life test 0x28) and where the first one ends, in
+    // room units (+0xB8, +0xBA)
+    s16 chaseLegs;
+    s16 chaseTargetX;
+    s16 chaseTargetZ;
 
     // Remaster: set when actor is on stairs (YHandler active), cleared when stair interpolation ends
 };

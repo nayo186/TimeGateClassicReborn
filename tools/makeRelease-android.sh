@@ -19,7 +19,10 @@
 #     CLASSIC_REBORN_KEY_PASSWORD       the key's password
 # - Needs JDK 17 and the Android SDK (ANDROID_HOME) with the NDK and CMake
 #   of TatouSource/android/app/build.gradle.
-# The result goes to release/ClassicReborn-<version>-android.apk.
+# - CLASSIC_REBORN_EDITION=timegate builds Time Gate: Classic Reborn (its own
+#   app, name, icon and soundfont; android/app/build.gradle) instead.
+# The result goes to release/ClassicReborn-<version>-android.apk
+# (TimeGateClassicReborn-... for Time Gate).
 
 set -euo pipefail
 
@@ -31,7 +34,12 @@ version="$1"
 repo="$(cd "$(dirname "$0")/.." && pwd)"
 project="$repo/TatouSource/android"
 releaseFolder="$repo/release"
-name="ClassicReborn-$version-android.apk"
+edition="${CLASSIC_REBORN_EDITION:-alone}"
+if [ "$edition" = "timegate" ]; then
+    name="TimeGateClassicReborn-$version-android.apk"
+else
+    name="ClassicReborn-$version-android.apk"
+fi
 
 if [ -z "${CLASSIC_REBORN_KEYSTORE:-}" ] || [ ! -f "$CLASSIC_REBORN_KEYSTORE" ]; then
     echo "The project's signing key is missing (CLASSIC_REBORN_KEYSTORE)" >&2
@@ -39,7 +47,7 @@ if [ -z "${CLASSIC_REBORN_KEYSTORE:-}" ] || [ ! -f "$CLASSIC_REBORN_KEYSTORE" ];
 fi
 
 echo "== Building the release app"
-(cd "$project" && bash ./gradlew assembleRelease --no-daemon -PclassicRebornVersion="$version")
+(cd "$project" && bash ./gradlew assembleRelease --no-daemon -PclassicRebornVersion="$version" -PclassicRebornEdition="$edition")
 
 apk="$project/app/build/outputs/apk/release/app-release.apk"
 if [ ! -f "$apk" ]; then

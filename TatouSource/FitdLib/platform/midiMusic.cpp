@@ -166,14 +166,30 @@ static SoLoud::handle s_handle = 0;
 static tsf* loadSoundFont(const char* name)
 {
     std::string path;
+    tsf* synth = nullptr;
     if (name && name[0])
+    {
         path = std::string(kSoundFontsFolder) + "/" + name;
+        synth = tsf_load_filename(path.c_str());
+    }
     else
     {
+#ifdef __ANDROID__
+        // Android: inside the app (its assets, android/app/build.gradle),
+        // which SDL reads by its plain name
+        path = kSoundFontName;
+        size_t size = 0;
+        if (void* data = SDL_LoadFile(kSoundFontName, &size))
+        {
+            synth = tsf_load_memory(data, (int)size);
+            SDL_free(data);
+        }
+#else
         const char* base = SDL_GetBasePath();
         path = std::string(base ? base : "") + kSoundFontName;
+        synth = tsf_load_filename(path.c_str());
+#endif
     }
-    tsf* synth = tsf_load_filename(path.c_str());
     if (!synth)
     {
         printf(MUSIC_WARN "The soundfont %s could not be read" CON_RESET "\n", path.c_str());

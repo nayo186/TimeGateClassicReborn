@@ -187,6 +187,8 @@ namespace
             return inGame ? -1 : kQuit;
         palette_t palette;
         copyPalette(sealData.data() + 64000, palette);
+        // A picture of the player for it (customBackgrounds.cpp)
+        coreScreenPictureShown("ITD_RESS", kMenuPicture);
         convertPaletteIfRequired(palette);
         copyPalette(palette, currentGamePalette);
         setPalette(palette);
@@ -376,6 +378,8 @@ namespace
             return false;
         palette_t screenPalette;
         copyPalette(wall.data() + 64000, screenPalette);
+        // A picture of the player for it (customBackgrounds.cpp)
+        coreScreenPictureShown("ITD_RESS", saving ? kSavePicture : kLoadPicture);
         convertPaletteIfRequired(screenPalette);
         setPalette(screenPalette);
 
@@ -549,6 +553,8 @@ void timeGateInventory()
     if (pictures.glass.size() < 64000 + 768)
         return;
     copyPalette(pictures.glass.data() + 64000, pictures.palette);
+    // A picture of the player for it (customBackgrounds.cpp)
+    coreScreenPictureShown("ITD_RESS", kInventoryPicture);
     convertPaletteIfRequired(pictures.palette);
     setPalette(pictures.palette);
 
@@ -751,6 +757,8 @@ namespace
             return;
         palette_t palette;
         copyPalette(lute.data() + 64000, palette);
+        // A picture of the player for it (customBackgrounds.cpp)
+        coreScreenPictureShown("ITD_RESS", kVolumePicture);
         convertPaletteIfRequired(palette);
         setPalette(palette);
         std::unique_ptr<sHybrid> cancelLit = loadHybrid(kCancelLitPicture);
@@ -913,6 +921,8 @@ namespace
             return;
         palette_t palette;
         copyPalette(glass.data() + 64000, palette);
+        // A picture of the player for it (customBackgrounds.cpp)
+        coreScreenPictureShown("ITD_RESS", kTarotPicture);
         convertPaletteIfRequired(palette);
         setPalette(palette);
         std::unique_ptr<sHybrid> grey[3], colour[3];
@@ -1039,6 +1049,8 @@ namespace
             return;
         palette_t palette;
         copyPalette(stone.data() + 64000, palette);
+        // A picture of the player for it (customBackgrounds.cpp)
+        coreScreenPictureShown("ITD_RESS", kStonePicture);
         convertPaletteIfRequired(palette);
         setPalette(palette);
         const u8 panelColour = nearestColour(palette, 24, 24, 28);

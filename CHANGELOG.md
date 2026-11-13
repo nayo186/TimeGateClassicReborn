@@ -2,6 +2,36 @@
 
 Time Gate: Classic Reborn shares its engine with [Alone in the Dark: Classic Reborn](https://github.com/nayo186/AloneInTheDarkClassicReborn), which started from [Alone in the Dark: Re-Haunted](https://github.com/spacefarergames/AloneInTheDarkReHaunted) by Spacefarer Retro Remasters and [FITD](https://github.com/yaz0r/FITD) by yaz0r. The history of the engine is in those repositories; this one starts with the first release of *Time Gate*. Each fix is explained, with its cause, in `docs/baseline/BUGS.md` (letter G).
 
+## v0.1.0-alpha.2 (2026-11-13)
+
+Time Gate on Android, enemies that find their way round obstacles, and fixes found while playing the prison after the journey back in time.
+
+**The game**
+
+- Enemies that chase you find their way round walls and furniture, as the original does: each floor's obstacles are read from the game's `PURSUIT.PAK` and the shortest way is searched through their corners. The knight of the prison corridor now keeps to his round instead of wandering into your cell, and the scripts that ask how far the way is left work again (G49).
+- The jailer of the cells takes a blow from behind while he looks at the other prisoner, and if he goes away the prisoner bangs on the bars again (G50).
+- The sound of a character's steps is only heard in your room, and quieter the farther it is, as in the original: no more endless steps from the guard of the next room (G48).
+- The scripts that take your objects away (when you are imprisoned) now empty the inventory, as the original (G47).
+
+**Languages**
+
+- A language can also be the original CD as it came, an image (`.iso`, `.bin`, `.img`) in its folder of `Languages`: its texts, voices and videos are read from the image (G46).
+
+**Android (experimental)**
+
+- Time Gate: Classic Reborn for Android: its own app with its name and icon, the music's soundfont inside, import of the game folder with its languages, saves and soundfonts with a progress window (G44, G45; see the README).
+- On the phone, the **Controller** tab of **Controls** is a list, easier to use with a finger than the picture (G53).
+- With Vulkan, some places where a small animation is drawn on the background came out grey or striped (C75, shared with Alone in the Dark: Classic Reborn).
+
+**For modders**
+
+- **Export backgrounds** also writes the second pictures of the cameras (`CYMERAnn`) and the full-screen pictures (menu, save wall, inventory, volume, tarot, sound setup), and those screens can be replaced with your pictures. **Export masks** works with Time Gate (G51).
+- **Export sequences** writes each video as numbered pictures and its sound (`sequences\ANn\000.png`..., `sound.wav`); pictures (PNG or JPG) and a sound (`sound.wav`, `.ogg`, `.mp3`, `.flac`) put in `Backgrounds\sequences\ANn` replace them (G52).
+
+**Known limitations of this alpha**
+
+- The rest of the game, after the prison, is still being played through.
+
 ## v0.1.0-alpha.1 (2026-11-11)
 
 The first alpha: the first part of the game, in the museum, is playable up to the journey back in time.
@@ -27,5 +57,5 @@ The first alpha: the first part of the game, in the museum, is playable up to th
 
 **Known limitations of this alpha**
 
-- Enemies that chase you go straight towards you; the original finds a way around obstacles, so one may get stuck behind a column or a piece of furniture (G42).
-- There is no Android version yet.
+- Enemies that chase you go straight towards you; the original finds a way around obstacles, so one may get stuck behind a column or a piece of furniture (G42; found in alpha 2, G49).
+- There is no Android version yet (added in alpha 2).

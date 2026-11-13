@@ -47,6 +47,10 @@ int getMatrix(int param1, int actorIdx, int param2)
 // 90 degrees; 2 is the one ahead of actor1. The AITD1 test below wanted
 // Carnby's body beside the point: the gun case's Winchester, in front of its
 // middle, never came (BUGS.md T30)
+// Time Gate's is the same (TIMEGATE.EXE 23930), its centres halved with a
+// shift. With AITD1's test the jailer of the cells (script 340) did not see
+// the prisoner ahead of him, so took no blow from behind, and the prisoner,
+// who saw it, waited for him in vain (BUGS.md G50)
 static int getPosRelAITD3(tObject* actor1, tObject* actor2)
 {
     ZVStruct localZv;
@@ -54,9 +58,11 @@ static int getPosRelAITD3(tObject* actor1, tObject* actor2)
     if (actor1->room != actor2->room)
         AdjustZV(&localZv, actor2->room, actor1->room);
 
+    const bool shift = g_gameId == TIMEGATE;
+    auto centre = [shift](int a, int b) { return shift ? (a + b) >> 1 : (a + b) / 2; };
     const int angle = 0x180 - actor1->beta;
-    const int dx = (localZv.ZVX1 + localZv.ZVX2) / 2 - (actor1->zv.ZVX1 + actor1->zv.ZVX2) / 2;
-    const int dz = (localZv.ZVZ1 + localZv.ZVZ2) / 2 - (actor1->zv.ZVZ1 + actor1->zv.ZVZ2) / 2;
+    const int dx = centre(localZv.ZVX1, localZv.ZVX2) - centre(actor1->zv.ZVX1, actor1->zv.ZVX2);
+    const int dz = centre(localZv.ZVZ1, localZv.ZVZ2) - centre(actor1->zv.ZVZ1, actor1->zv.ZVZ2);
     const int c = cosTable[(angle + 0x100) & 0x3FF];
     const int s = cosTable[angle & 0x3FF];
     const int across = (dx * c - dz * s) >> 15;
@@ -69,7 +75,7 @@ static int getPosRelAITD3(tObject* actor1, tObject* actor2)
 
 int getPosRel(tObject* actor1, tObject* actor2)
 {
-    if (g_gameId == AITD3)
+    if (g_gameId == AITD3 || g_gameId == TIMEGATE)
         return getPosRelAITD3(actor1, actor2);
 
     int beta1 = actor1->beta;
@@ -1120,6 +1126,17 @@ int evalVar2(const char* name)
                     {
                         return 1;
                         break;
+                    }
+                case 0x28:
+                    {
+                        // Time Gate: the legs of the way of movement mode 5,
+                        // of the object running its script (TIMEGATE.EXE
+                        // 2A566, +0xB6). Unknown, it was 0: the chasers took
+                        // the way for done (BUGS.md G49)
+                        if (g_gameId == TIMEGATE)
+                            return currentProcessedActorPtr->chaseLegs;
+                        printf(EVAL_WARN "Unhandled test type %X in evalVar" CON_RESET "\n", var1);
+                        return 0;
                     }
                 case 0x29:
                     {

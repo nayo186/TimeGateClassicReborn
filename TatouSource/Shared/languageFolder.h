@@ -33,6 +33,8 @@
 
 // The folder of AITD3's files on its CD
 static const char* const kLanguageImageFolder = "INDARK3";
+// Time Gate: the folder of the game on its CD (the French CD, BUGS.md G46)
+static const char* const kTimeGateImageFolder = "TIMEGATE";
 
 // The folder in Languages of a language, by the name of its PAK (ESPAGNOL:
 // Spanish); empty if it is not one of the game's languages
@@ -48,10 +50,11 @@ inline const char* languagePackName(const char* languagePak)
     return "";
 }
 
-// The CD image in a language folder whose INDARK3 folder has the language
-// PAK (e.g. "ESPAGNOL.PAK"), opened with its .cue if there is one; false if
-// the folder has none
-inline bool openLanguageImage(const std::filesystem::path& folder, const std::string& languagePak, CdImage& image)
+// The CD image in a language folder whose INDARK3 folder (imageFolder) has
+// the language PAK (e.g. "ESPAGNOL.PAK"), opened with its .cue if there is
+// one; false if the folder has none
+inline bool openLanguageImage(const std::filesystem::path& folder, const std::string& languagePak, CdImage& image,
+                              const char* imageFolder = kLanguageImageFolder)
 {
     namespace fs = std::filesystem;
     std::error_code ec;
@@ -70,7 +73,7 @@ inline bool openLanguageImage(const std::filesystem::path& folder, const std::st
             if (!fs::exists(cue, ec))
                 cue.clear();
         }
-        if (image.open(entry.path(), cue) && image.hasFile(kLanguageImageFolder, languagePak))
+        if (image.open(entry.path(), cue) && image.hasFile(imageFolder, languagePak))
             return true;
     }
     return false;
@@ -204,13 +207,29 @@ inline std::string installedLanguageTimeGate(const std::filesystem::path& gameDa
     return std::string();
 }
 
+// Time Gate: a language's CD image in its folder (the French CD as it came,
+// .iso or .bin/.cue: the whole game in its TIMEGATE folder), with the
+// texts, voices and scripts; false if there is none
+inline bool openTimeGateLanguageImage(const std::filesystem::path& folder, CdImage& image)
+{
+    return openLanguageImage(folder, "FRANCAIS.PAK", image, kTimeGateImageFolder)
+        && image.hasFile(kTimeGateImageFolder, "SAMPLES.PAK") && image.hasFile(kTimeGateImageFolder, "LISTLIFE.PAK");
+}
+
 // Time Gate: what a language folder lacks to be used over the installed
 // data; empty if nothing. Its texts, its voices and its scripts (they call
 // the voices and texts by number, which change from one language to another);
-// the rest it has (fonts, objects, cameras, videos) is read over the data too
+// the rest it has (fonts, objects, cameras, videos) is read over the data too.
+// A CD image of the language counts as all of them (openTimeGateLanguageImage)
 inline std::string missingTimeGateLanguageFiles(const std::filesystem::path& folder)
 {
     std::string missing;
+    if (!languageFileExists(folder, "FRANCAIS.PAK"))
+    {
+        CdImage image;
+        if (openTimeGateLanguageImage(folder, image))
+            return missing;
+    }
     for (const char* name : { "FRANCAIS.PAK", "SAMPLES.PAK", "LISTLIFE.PAK" })
     {
         if (languageFileExists(folder, name))

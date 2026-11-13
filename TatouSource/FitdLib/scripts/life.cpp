@@ -2298,8 +2298,25 @@ void processLife(int lifeNum, bool callFoundLife)
                     {
                         if (currentProcessedActorPtr->frame == lifeTempVar3)
                         {
+                            // Time Gate (TIMEGATE.EXE 2C4EA): only an object
+                            // in the hero's room is heard, quieter the farther
+                            // it is from the camera (the sum of the distances
+                            // on each axis, 3963D; 32000 past 16 bits). Heard
+                            // from anywhere, the guard walking into what stands
+                            // in the corridor (script 356) sounded his steps
+                            // for ever in the cell (BUGS.md G48)
                             if (g_gameId == TIMEGATE)
-                                playChannelSound(lifeTempVar1, animSampleChannel, false);
+                            {
+                                if (currentProcessedActorPtr->room == currentRoom)
+                                {
+                                    int distance = abs(currentProcessedActorPtr->worldX - translateX)
+                                        + abs(currentProcessedActorPtr->worldY - translateY)
+                                        + abs(currentProcessedActorPtr->worldZ - translateZ);
+                                    if (distance > 32767)
+                                        distance = 32000;
+                                    playChannelSound(lifeTempVar1, animSampleChannel, false, 32767 - distance);
+                                }
+                            }
                             else
                                 playSound(lifeTempVar1);
 
@@ -3305,11 +3322,14 @@ void processLife(int lifeNum, bool callFoundLife)
                 // 767) leaves his objects so; the cougar's script (377) then
                 // takes its own actions (182). Unknown here, the cougar had
                 // Carnby's inventory, with its actions among his objects
-                // (BUGS.md T45)
+                // (BUGS.md T45). Time Gate does the same (TIMEGATE.EXE
+                // 2D043, opcode 0x5A; scripts 64 and 94, which then delete
+                // the world's objects): ignored, the objects stayed in the
+                // inventory (BUGS.md G47)
                 appendFormated("LM_DEL_INVENTORY ");
-                if (g_gameId != AITD3)
+                if (g_gameId != AITD3 && g_gameId != TIMEGATE)
                 {
-                    printf(LIFE_WARN "DEL_INVENTORY only known in AITD3" CON_RESET "\n");
+                    printf(LIFE_WARN "DEL_INVENTORY only known in AITD3 and Time Gate" CON_RESET "\n");
                     break;
                 }
                 for (int i = 0; i < numObjInInventoryTable[currentInventory]; i++)

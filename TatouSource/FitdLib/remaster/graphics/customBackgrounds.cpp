@@ -8,8 +8,10 @@
 
 #include "customBackgrounds.h"
 #include "settings.h"
+#include <algorithm>
 #include <bx/timer.h>
 #include "common.h"  // after bx: windows.h min/max macros
+#include "timeGateVideo.h"
 #include "consoleLog.h"
 #include "userFolder.h"
 #include "gameFolder.h"
@@ -661,8 +663,52 @@ static bool exportPicture(const std::string& outFolder, const char* pakName, int
 // sequences/<NAME>/000.png...: they can be remade (by hand, with an AI
 // upscaler) and put back. Decoded as playSequence (core/sequence.cpp) does:
 // frame 0 is the palette and the whole picture, each next one changes it
+// Time Gate's videos (cd/TIMEGATE/AN<n>.MUX) the same way, in
+// sequences/AN<n>/000.png..., and the sound of each as sound.wav, which a
+// sound.wav (.ogg, .mp3, .flac) of the player replaces (core/timeGateVideo.cpp;
+// BUGS.md G52)
+static int exportTimeGateVideos(const std::string& outFolder)
+{
+    int frames = 0;
+    for (int number = 0; number < 100; number++)
+    {
+        const std::string videoFolder = outFolder + "sequences/AN" + std::to_string(number) + "/";
+        bool folderMade = false;
+        int count = 0;
+        std::vector<unsigned char> wav;
+        const bool found = decodeTimeGateVideo(number, [&](int frame, const unsigned char* pixels, const palette_t& colours)
+        {
+            if (!folderMade)
+            {
+                std::error_code error;
+                fs::create_directories(fs::u8path(videoFolder), error);
+                folderMade = true;
+            }
+            char file[16];
+            snprintf(file, sizeof(file), "%03d.png", frame);
+            if (writePicturePng(videoFolder + file, pixels, colours))
+                count++;
+        }, wav);
+        if (!found)
+            continue;
+        if (folderMade && !wav.empty())
+        {
+            if (FILE* file = fopen((videoFolder + "sound.wav").c_str(), "wb"))
+            {
+                fwrite(wav.data(), 1, wav.size(), file);
+                fclose(file);
+            }
+        }
+        frames += count;
+        printf(MAIN_TAG "Background export: video AN%d, %d frames and its sound\n", number, count);
+    }
+    return frames;
+}
+
 static int exportSequences(const std::string& outFolder)
 {
+    if (g_gameId == TIMEGATE)
+        return exportTimeGateVideos(outFolder);
     int frames = 0;
     for (int sequence = 0; const char* sequenceText = sequenceName(sequence); sequence++)
     {
@@ -706,6 +752,8 @@ static int exportSequences(const std::string& outFolder)
     return frames;
 }
 
+static std::vector<unsigned char> loadCameraPixels(const char* pakName, int index);
+
 static void exportAll(int gameId)
 {
     palette_t palette = {};
@@ -726,17 +774,32 @@ static void exportAll(int gameId)
         return;
     }
 
-    for (int floor = 0; floor < 32; floor++)
+    // Time Gate also has a second picture of some cameras, CYMERAnn (the museum
+    // without the alarms' beams...; core/camera.cpp), shown with that name
+    for (const char* prefix : { "CAMERA", "CYMERA" })
     {
-        char pakName[16];
-        snprintf(pakName, sizeof(pakName), "CAMERA%02d", floor);
-        const unsigned int count = PAK_getNumFiles(pakName);
-        if (count == 0 || count > 4096)
+        if (strcmp(prefix, "CYMERA") == 0 && gameId != TIMEGATE)
             continue;
-        for (unsigned int index = 0; index < count; index++)
+        for (int floor = 0; floor < 32; floor++)
         {
-            if (exportPicture(outFolder, pakName, (int)index, palette, gameId))
-                s_exportCount++;
+            char pakName[16];
+            snprintf(pakName, sizeof(pakName), "%s%02d", prefix, floor);
+            const unsigned int count = PAK_getNumFiles(pakName);
+            if (count == 0 || count > 4096)
+                continue;
+            for (unsigned int index = 0; index < count; index++)
+            {
+                // CYMERAnn has an entry for every camera, black but for the
+                // few that have a second picture: those are left out
+                if (prefix[1] == 'Y')
+                {
+                    const std::vector<unsigned char> pixels = loadCameraPixels(pakName, (int)index);
+                    if (pixels.empty() || std::all_of(pixels.begin(), pixels.end(), [&](unsigned char p) { return p == pixels[0]; }))
+                        continue;
+                }
+                if (exportPicture(outFolder, pakName, (int)index, palette, gameId))
+                    s_exportCount++;
+            }
         }
     }
 
@@ -764,14 +827,22 @@ static void exportAll(int gameId)
                 s_exportCount++;
         }
     }
-    else if (gameId == JACK || gameId == AITD2 || gameId == AITD3)
+    else if (gameId == JACK || gameId == AITD2 || gameId == AITD3 || gameId == TIMEGATE)
     {
-        // Full-screen pictures (book, outside view...): every ITD_RESS entry
-        // the size of a picture (exportPicture skips the rest)
+        // Full-screen pictures (book, outside view...; in Time Gate the menu's
+        // seal, the save wall, the stained glass of the inventory, the lute,
+        // the tarot, the sound setup...): every ITD_RESS entry the size of a
+        // picture (exportPicture skips the rest)
         const unsigned int count = PAK_getNumFiles("ITD_RESS");
         for (unsigned int index = 0; index < count && index < 256; index++)
+        {
+            // Time Gate's pictures are a picture and its palette; its entry 57
+            // is bigger and is not one
+            if (gameId == TIMEGATE && getPakSize("ITD_RESS", (int)index) != 64000 + 768)
+                continue;
             if (exportPicture(outFolder, "ITD_RESS", (int)index, palette, gameId))
                 s_exportCount++;
+        }
     }
 
     printf(MAIN_OK "Background export: %d pictures in %s\n", s_exportCount.load(), outFolder.c_str());
@@ -789,7 +860,8 @@ void customBackgroundsExportStart()
 
 bool customBackgroundsHasSequences()
 {
-    return sequenceName(0) != nullptr;
+    // Time Gate: its videos (exportTimeGateVideos)
+    return g_gameId == TIMEGATE || sequenceName(0) != nullptr;
 }
 
 static std::atomic<int> s_sequenceExportState(0);
@@ -1015,6 +1087,75 @@ static int exportJackCameraMasks(unsigned char* data, int size, const char* pakN
     return count;
 }
 
+// Time Gate: each camera has its masks in MK<floor><camera>00.PAK (NK... for
+// its second picture, CYMERAnn), 10 entries for each room it sees: mask j of
+// room i is entry i * 10 + j, as loadTimeGateMasks (core/camera.cpp) reads
+// them; the entries left over cover the whole screen (box 0,1-319,199, 320
+// wide) and are not used. Each entry: a box and its rows as runs of skipped
+// and covered pixels
+static int exportTimeGateMasks(int floor, const palette_t& palette, const std::string& maskFolder, const std::string& guideFolder)
+{
+    int count = 0;
+    char cameraPak[16];
+    snprintf(cameraPak, sizeof(cameraPak), "CAMERA%02d", floor);
+    if (!dataFileExists((std::string(cameraPak) + ".PAK").c_str()))
+        return 0;
+    const unsigned int cameras = PAK_getNumFiles(cameraPak);
+    std::vector<unsigned char> shape(320 * 200);
+    for (unsigned int camera = 0; camera < cameras && camera < 100; camera++)
+    {
+        for (int second = 0; second < 2; second++)
+        {
+            char maskPak[16], picturePak[16];
+            snprintf(maskPak, sizeof(maskPak), second ? "NK%02d%02d00" : "MK%02d%02d00", floor, (int)camera);
+            snprintf(picturePak, sizeof(picturePak), second ? "CYMERA%02d" : "CAMERA%02d", floor);
+            if (!dataFileExists((std::string(maskPak) + ".PAK").c_str()))
+                continue;
+            const std::vector<unsigned char> picture = loadCameraPixels(picturePak, (int)camera);
+            // A camera without a second picture (black in CYMERAnn): its NK
+            // masks are never used
+            if (second && (picture.empty() || std::all_of(picture.begin(), picture.end(), [&](unsigned char p) { return p == picture[0]; })))
+                continue;
+            const unsigned int entries = PAK_getNumFiles(maskPak);
+            for (unsigned int entry = 0; entry < entries && entry < 640; entry++)
+            {
+                const int size = getPakSize(maskPak, (int)entry);
+                unsigned char* data = size >= 12 ? (unsigned char*)loadPak(maskPak, (int)entry) : nullptr;
+                if (!data)
+                    continue;
+                const int x1 = READ_LE_U16(data), y1 = READ_LE_U16(data + 2);
+                const int x2 = READ_LE_U16(data + 4), y2 = READ_LE_U16(data + 6);
+                const int width = READ_LE_U16(data + 8), rows = READ_LE_U16(data + 10);
+                const bool unused = x1 == 0 && y1 == 1 && x2 == 319 && y2 == 199 && width == 320;
+                std::fill(shape.begin(), shape.end(), (unsigned char)0);
+                bool valid = !unused && rows <= 200;
+                int position = 12;
+                for (int row = 0; valid && row < rows; row++)
+                {
+                    if (position + 2 > size) { valid = false; break; }
+                    const int runs = READ_LE_U16(data + position);
+                    position += 2;
+                    if (position + runs * 2 > size) { valid = false; break; }
+                    int offset = x1 + (y1 + row) * 320;
+                    for (int run = 0; run < runs; run++)
+                    {
+                        offset += data[position++];
+                        const int covered = data[position++];
+                        for (int m = 0; m < covered; m++, offset++)
+                            if (offset >= 0 && offset < 320 * 200)
+                                shape[offset] = 0xFF;
+                    }
+                }
+                free(data);
+                if (valid && writeMask(maskFolder, guideFolder, picturePak, (int)camera, (int)entry / 10, (int)entry % 10,
+                                       shape, picture.empty() ? nullptr : picture.data(), palette))
+                    count++;
+            }
+        }
+    }
+    return count;
+}
+
 static void exportAllMasks()
 {
     palette_t palette = {};
@@ -1050,6 +1191,10 @@ static void exportAllMasks()
             free(data);
         }
     }
+
+    // Time Gate: a file of masks per camera
+    for (int floor = 0; g_gameId == TIMEGATE && floor < 32; floor++)
+        s_maskExportCount += exportTimeGateMasks(floor, palette, maskFolder, guideFolder);
 
     // Alone in the Dark: the masks are polygons in the floor's camera data
     for (int floor = 0; g_gameId == AITD1 && floor < 32; floor++)
@@ -1092,9 +1237,9 @@ void customBackgroundsExportMasksStart()
 {
     if (s_maskExportState == 1)
         return;
-    if (g_gameId != AITD1 && g_gameId != JACK && g_gameId != AITD2 && g_gameId != AITD3)
+    if (g_gameId != AITD1 && g_gameId != JACK && g_gameId != AITD2 && g_gameId != AITD3 && g_gameId != TIMEGATE)
     {
-        printf(MAIN_WARN "Mask export: only Alone in the Dark 1, 2 and 3 and Jack in the Dark\n");
+        printf(MAIN_WARN "Mask export: only Alone in the Dark 1, 2 and 3, Jack in the Dark and Time Gate\n");
         s_maskExportState = 3;
         return;
     }

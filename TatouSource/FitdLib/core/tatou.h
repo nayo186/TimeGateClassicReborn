@@ -32,8 +32,9 @@ void playSoundLooping(int num);
 int channelLoopSample(int channel);
 // Time Gate's 8 sound channels (TIMEGATE.EXE 30BC0, 30C90, 30DB0, 31050):
 // plays a sample on a channel (7 for any number past it), once or in a
-// loop, in place of the one it had; -1 stops the channel
-void playChannelSound(int num, int channel, bool looping);
+// loop, in place of the one it had, at a volume of 0 to 32767; -1 stops
+// the channel
+void playChannelSound(int num, int channel, bool looping, int volume = 32767);
 // Stops a channel's sound
 void stopChannelSound(int channel);
 // The volume of a channel's sound, 0 to 32767 as the scripts give it

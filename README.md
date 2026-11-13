@@ -2,9 +2,9 @@
 
 Play **Time Gate: Knight's Chase** (Infogrames, 1996) on modern PCs, with its original graphics and a set of careful fixes and options.
 
-**[⬇ Download the latest version](https://github.com/nayo186/TimeGateClassicReborn/releases/latest)** for Windows, Linux or macOS (experimental): unpack it, run `Launcher.exe` (`Launcher` on Linux and macOS) and choose your GOG copy of the game. Nothing else to install.
+**[⬇ Download the latest version](https://github.com/nayo186/TimeGateClassicReborn/releases/latest)** for Windows, Linux, macOS or Android (both experimental): unpack it, run `Launcher.exe` (`Launcher` on Linux and macOS) and choose your GOG copy of the game; on Android, install the app and import the game (see [On Android](#on-android-experimental)). Nothing else to install.
 
-> **This is an alpha.** The first part of the game, in the museum, is playable up to the journey back in time; the rest of the game is being played through now. If something behaves differently from the original, please [report it](#reporting-a-problem): it helps a lot.
+> **This is an alpha.** The museum and the first scenes after the journey back in time, in the prison, are playable; the rest of the game is being played through now. If something behaves differently from the original, please [report it](#reporting-a-problem): it helps a lot.
 
 Time Gate: Classic Reborn is a C++17 source port of the Infogrames engine of *Alone in the Dark* and *Time Gate*. It shares its engine with [Alone in the Dark: Classic Reborn](https://github.com/nayo186/AloneInTheDarkClassicReborn), built on [FITD (Free in the Dark)](https://github.com/yaz0r/FITD) by yaz0r through [Alone in the Dark: Re-Haunted](https://github.com/spacefarergames/AloneInTheDarkReHaunted). Every part of *Time Gate* that differs from the *Alone in the Dark* games was compared with the original DOS executable, `TIMEGATE.EXE`, and made to work as it does.
 
@@ -21,6 +21,7 @@ The engine comes from FITD, which reverse engineered the DOS engine of *Alone in
 - **Windows** 10 or 11, 64-bit, and a graphics card with DirectX 11.
 - Or **Linux**, 64-bit (x86-64): Ubuntu 22.04, Linux Mint 21, Debian 12, Fedora 37 or newer, or any other distribution of the same age, with a graphics card that supports Vulkan or OpenGL.
 - Or **macOS** 11 or newer, Apple Silicon or Intel (experimental).
+- Or **Android** 7 or newer on a 64-bit phone or tablet (experimental).
 - Your own copy of *Time Gate: Knight's Chase*: the GOG edition (English, Spanish, German or Italian), or the French CD (*Time Gate : Le Secret du Templier*) with its files copied to a folder (see [Getting started](#getting-started)).
 - Nothing else to install: no .NET, no Visual C++ Redistributable, no DirectX setup, no Linux packages. Unpack and run the launcher.
 
@@ -70,6 +71,21 @@ It is built for every Mac with macOS 11 or newer, Apple Silicon and Intel, from 
 2. **The first time**, macOS stops it, because it is not signed with a paid Apple developer account. Open **Terminal**, type `xattr -dr com.apple.quarantine ` (with a space at the end), drag the unpacked folder onto the Terminal window and press Return. This is needed once.
 3. Double click **`Launcher`** (it opens with a Terminal window next to it; leave it open while you play).
 4. **The game files.** The simplest on a Mac is to copy them into `UserData/TimeGate/GAME` (see [Folders](#folders)), from your GOG installation on a Windows PC. The launcher finds them by itself. You can also press **Browse** and choose the folder where they are.
+
+### On Android (experimental)
+
+**The Android version is new and experimental.** It is the same game as on the PC, with the launcher inside the app and on-screen controls; it is its own app, **Time Gate: Classic Reborn**, beside *Alone in the Dark: Classic Reborn* if you have it. It needs Android 7 or newer on a 64-bit phone or tablet, and draws with Vulkan (or OpenGL ES 3.0 where Vulkan does not start). Reports from Android players are very welcome (see [Reporting a problem](#reporting-a-problem)).
+
+1. **Install the app.** On the phone, download `TimeGateClassicReborn-<version>-android.apk` from the [latest release](https://github.com/nayo186/TimeGateClassicReborn/releases/latest) and open it. The first time, Android asks to allow your browser (or file manager) to install apps: allow it. It is not on Google Play, so Play Protect may warn about an unknown app: choose to install anyway.
+2. **Bring the game to the phone.** Copy your game folder from the PC to the phone, for example with a USB cable into **Download**: the **GOG installation** of *Time Gate* (the folder with `PURSUIT.PAK` and `cd`), or the `UserData\TimeGate` folder of Classic Reborn on your PC (with its `GAME`, `Languages` and `Saves`). Put the other languages you own inside its `Languages` folder, each in its own folder, as on the PC (see [Languages](#languages)).
+3. **Import it.** In the launcher press **Import...**, go into that folder and press **Use this folder**, then **Allow**. The app copies the game (about 400 MB), its videos, languages, saves and soundfonts, showing its progress. When it says the game is imported, the copy in **Download** can be deleted. A language folder (or a folder of them) can also be imported later on its own.
+4. Choose the language and press **Play**. The music's soundfont comes inside the app.
+
+**Why import?** Android keeps each app's files to itself: the game lives in the app's own folder (`Android/data/com.classicreborn.timegate/files`, with `UserData` inside, as on the PC), and other apps cannot copy into it. Uninstalling the app deletes that folder, game and saves included.
+
+**On-screen controls.** A semi-transparent controller over the game: the **D-pad** is the tank control, the **stick** (where you put your thumb on the left half) walks where you push it, and **A**, **B**, **Start**, **Back** and **RT** do what they do on a controller (see [Controls](#controls)). They hide when a controller or a keyboard is used, and come back with a touch. In **Controls**, the **Controller** tab is a list on the phone: tap a button to remove it, or **+ Add**. The menus work with the finger.
+
+**Updates.** As on the PC, the launcher offers a newer version when there is one: Android asks you to update the app; accept. Your game, saves and options are kept.
 
 ## Languages
 
@@ -137,7 +153,7 @@ Found a bug? Please open an [issue](https://github.com/nayo186/TimeGateClassicRe
 
 It helps a lot to attach these files: drag them into the issue's text box. Close the game first, so the logs are complete:
 
-- **The logs**, in `UserData\TimeGate`, next to `Launcher.exe`: `tatou.log` (the last session), `tatou.prev.log` (the one before: if you opened the game again after the problem, the problem is in this one), `crash_log.txt` if the game closed by itself, and `launcher.log`, next to `Launcher.exe`, if the problem is in the launcher.
+- **The logs**, in `UserData\TimeGate`, next to `Launcher.exe`: `tatou.log` (the last session), `tatou.prev.log` (the one before: if you opened the game again after the problem, the problem is in this one), `crash_log.txt` if the game closed by itself, and `launcher.log`, next to `Launcher.exe`, if the problem is in the launcher. On Android they are in `Android/data/com.classicreborn.timegate/files/UserData/TimeGate` (and `launcher.log` in `files`): connect the phone to a PC with a USB cable to copy them.
 - **A save** made just before the problem, if you can: `UserData\TimeGate\Saves\SAVEn.ITD`. GitHub does not accept `.ITD` files, so put the save in a `.zip` first.
 - **A video or a screenshot**, if it is something you see; and if you can, one of the same place in the GOG game, to compare.
 

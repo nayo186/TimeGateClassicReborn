@@ -156,7 +156,8 @@ struct LauncherState
     std::string optionsNotSaved; // aitd_remaster.cfg that could not be written: its warning shows
     std::string message;        // error shown at the bottom
     std::string note;           // or a message that is not an error (the import's progress)
-    int importing = -1;         // Android: the game being imported (0-2), -1 none
+    int importing = -1;         // Android: the game being imported (0-3), -1 none
+    float importDone = 0.0f;    // Android: how much of it is copied (0-1, drawImport)
     int selectedGame = kFirstGame;   // 0 AITD1 (with Jack), 1 AITD2, 2 AITD3; 3 Time Gate
     bool quit = false;
     bool launched = false;      // Tatou.exe started (it saved the options already)
@@ -210,9 +211,15 @@ static void refreshDataFolder(LauncherState& state)
         found |= (language.pakName == state.settings.gameLanguage);
     if (!found)
         state.settings.gameLanguage = state.languages.empty() ? "" : state.languages[0].pakName;
+#ifdef CLASSIC_REBORN_EDITION_TIMEGATE
+    // Time Gate: Classic Reborn has only this game (no Jack in the Dark)
+    logLine("Time Gate: data folder OK: %s (%s, %d languages)", folder.c_str(),
+        state.gogInstall ? "GOG installation" : state.disc ? "the player's CD image" : "copy of the data", (int)state.languages.size());
+#else
     logLine("Game %d: data folder OK: %s (%s, %d languages, Jack in the Dark %s)", state.selectedGame + 1, folder.c_str(),
         state.gogInstall ? "GOG installation" : state.disc ? "the player's CD image" : "copy of the data", (int)state.languages.size(),
         state.jackFound ? "found" : "not found");
+#endif
 }
 
 // True if the game files found need a warning before playing: files missing,
@@ -843,6 +850,7 @@ static void followImport(LauncherState& state)
         const int percent = progress.total > 0 ? (int)(progress.copied * 100 / progress.total) : 0;
         snprintf(text, sizeof(text), tr(UiText::ImportCopying), percent);
         state.note = text;
+        state.importDone = progress.total > 0 ? (float)progress.copied / (float)progress.total : 0.0f;
         break;
     }
     case ImportState::Done:
@@ -853,9 +861,9 @@ static void followImport(LauncherState& state)
         // Every game now in its portable folder (the whole UserData brings several)
         if (progress.kind == ImportKind::Game)
         {
-            std::string* folders[3] = { &state.settings.aitd1DataFolder, &state.settings.aitd2DataFolder,
-                                        &state.settings.aitd3DataFolder };
-            for (int game = 0; game < 3; game++)
+            std::string* folders[4] = { &state.settings.aitd1DataFolder, &state.settings.aitd2DataFolder,
+                                        &state.settings.aitd3DataFolder, &state.settings.timegateDataFolder };
+            for (int game = kFirstGame; game < kFirstGame + kGameCount; game++)
                 if (dataFolderGame(portableGameFolder(game)) == game)
                     *folders[game] = portableGameFolder(game);
             saveLauncherSettings(state.settings);
@@ -989,6 +997,32 @@ static void drawFileCheck(LauncherState& state, const Fonts& fonts, const Metric
     ImGui::Dummy(ImVec2(0.0f, metrics.px(4.0f)));
     endCentredPopup();
 }
+
+#ifdef __ANDROID__
+// Android: while a game is copied (it takes a while), what the launcher is
+// doing and how far it got, so it is not taken for frozen
+static void drawImport(LauncherState& state, const Fonts& fonts, const Metrics& metrics)
+{
+    const bool copying = state.importing >= 0 && androidImportProgress().state == ImportState::Copying;
+    if (copying && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId))
+        ImGui::OpenPopup("##importPopup");
+    if (!beginCentredPopup("##importPopup", metrics))
+        return;
+    if (!copying)
+        ImGui::CloseCurrentPopup();
+    ImGui::PushFont(fonts.header);
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(color(kGoldLight), "%s", state.note.c_str());
+    ImGui::PopTextWrapPos();
+    ImGui::PopFont();
+    ImGui::Spacing();
+    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, color(kGold));
+    ImGui::ProgressBar(state.importDone, ImVec2(-1.0f, metrics.px(22.0f)), "");
+    ImGui::PopStyleColor();
+    ImGui::Dummy(ImVec2(0.0f, metrics.px(4.0f)));
+    endCentredPopup();
+}
+#endif
 
 // Before playing with game files missing or in no edition we know: what may
 // happen, and Play anyway or Cancel; files that only differ can be accepted
@@ -1424,6 +1458,9 @@ int main(int, char**)
         drawFilesWarning(state, fonts, metrics);
         drawOptionsWarning(state, fonts, metrics);
         drawFileCheck(state, fonts, metrics);
+#ifdef __ANDROID__
+        drawImport(state, fonts, metrics);
+#endif
         ImGui::PopFont();
         ImGui::Render();
 

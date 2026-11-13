@@ -20,6 +20,9 @@
 #include "consoleLog.h"
 #include "timeGateVideo.h"
 #include "languagePack.h"
+#include "coreHooks.h"
+#include "gameFolder.h"
+#include "settings.h"
 
 #include <cstring>
 #include <vector>
@@ -195,42 +198,131 @@ namespace
     }
 }
 
-bool playTimeGateVideo(int number)
+namespace
 {
-    const std::string name = "cd/TIMEGATE/AN" + std::to_string(number) + ".MUX";
-    DataFile file;
-    if (!file.open(name.c_str()))
+    // A video read whole: its data, where its chunks start, its sound and
+    // where each frame ends in it
+    struct Video
     {
-        printf(MAIN_WARN "Time Gate video %s not found" CON_RESET "\n", name.c_str());
-        return false;
-    }
-    std::vector<u8> data((size_t)file.size());
-    file.read(data.data(), data.size());
-    if (data.size() < 32 || read32(data.data()) != kSignature)
-    {
-        printf(MAIN_WARN "Time Gate video %s: not a MUX video" CON_RESET "\n", name.c_str());
-        return false;
-    }
-    const size_t headerSize = read16(&data[4]);
-    const int frequency = read16(&data[14]) ? read16(&data[14]) : 11111;
-    if (read16(&data[28]) != kWidth || read16(&data[30]) != kHeight || headerSize >= data.size())
-        return false;
+        std::string name;
+        std::vector<u8> data;
+        size_t headerSize = 0;
+        int frequency = 11111;
+        std::vector<u8> pcm;
+        std::vector<size_t> frameSound;
+    };
 
-    // The sound first, all of it, and where each frame ends in it
-    std::vector<u8> pcm;
-    std::vector<size_t> frameSound;
-    for (size_t p = headerSize; p + 6 <= data.size();)
+    bool readVideo(int number, Video& video, bool quiet)
+    {
+        video.name = "cd/TIMEGATE/AN" + std::to_string(number) + ".MUX";
+        DataFile file;
+        if (!file.open(video.name.c_str()))
+        {
+            if (!quiet)
+                printf(MAIN_WARN "Time Gate video %s not found" CON_RESET "\n", video.name.c_str());
+            return false;
+        }
+        std::vector<u8>& data = video.data;
+        data.resize((size_t)file.size());
+        file.read(data.data(), data.size());
+        if (data.size() < 32 || read32(data.data()) != kSignature)
+        {
+            printf(MAIN_WARN "Time Gate video %s: not a MUX video" CON_RESET "\n", video.name.c_str());
+            return false;
+        }
+        video.headerSize = read16(&data[4]);
+        video.frequency = read16(&data[14]) ? read16(&data[14]) : 11111;
+        if (read16(&data[28]) != kWidth || read16(&data[30]) != kHeight || video.headerSize >= data.size())
+            return false;
+
+        // The sound, all of it, and where each frame ends in it
+        for (size_t p = video.headerSize; p + 6 <= data.size();)
+        {
+            const int type = data[p];
+            const u32 size = read32(&data[p + 2]);
+            if (p + 6 + size > data.size() || type == 4)
+                break;
+            if (type == 6 || type == 7)
+                video.pcm.insert(video.pcm.end(), &data[p + 6], &data[p + 6] + size);
+            else if (type == 5)
+                video.frameSound.push_back(video.pcm.size());
+            p += 6 + size;
+        }
+        return true;
+    }
+
+    // The modder's sound for the video, with "Custom backgrounds" on:
+    // Backgrounds/sequences/AN<n>/sound.wav (or .ogg, .mp3, .flac); empty if
+    // there is none, and then the video's own sound plays (BUGS.md G52)
+    std::vector<u8> customSound(int number)
+    {
+        std::vector<u8> sound;
+        if (!g_settings.graphics.customBackgrounds)
+            return sound;
+        for (const char* extension : { "wav", "ogg", "mp3", "flac" })
+        {
+            const std::string path = std::string(customPicturesFolder()) + "sequences/AN" + std::to_string(number) + "/sound." + extension;
+            FILE* file = fopen(path.c_str(), "rb");
+            if (!file)
+                continue;
+            fseek(file, 0, SEEK_END);
+            const long size = ftell(file);
+            fseek(file, 0, SEEK_SET);
+            sound.resize(size > 0 ? (size_t)size : 0);
+            const size_t read = sound.empty() ? 0 : fread(sound.data(), 1, sound.size(), file);
+            fclose(file);
+            sound.resize(read);
+            if (!sound.empty())
+            {
+                printf(MAIN_TAG "Time Gate video AN%d: the sound of %s\n", number, path.c_str());
+                return sound;
+            }
+        }
+        return sound;
+    }
+}
+
+bool decodeTimeGateVideo(int number, const std::function<void(int frame, const unsigned char* pixels, const palette_t& colours)>& onFrame,
+    std::vector<unsigned char>& wav)
+{
+    Video video;
+    if (!readVideo(number, video, true))
+        return false;
+    std::vector<u8> frame(kWidth * kHeight, 0);
+    palette_t palette = {};
+    int shown = 0;
+    const std::vector<u8>& data = video.data;
+    for (size_t p = video.headerSize; p + 6 <= data.size();)
     {
         const int type = data[p];
         const u32 size = read32(&data[p + 2]);
         if (p + 6 + size > data.size() || type == 4)
             break;
-        if (type == 6 || type == 7)
-            pcm.insert(pcm.end(), &data[p + 6], &data[p + 6] + size);
+        const u8* chunk = &data[p + 6];
+        if ((type == 0x65 || type == 0x70) && size >= 768)
+            copyPalette((u8*)chunk, palette);
+        else if (type == 0x64 || type == 0x6F)
+            decodePicture(chunk, size, frame);
         else if (type == 5)
-            frameSound.push_back(pcm.size());
+            onFrame(shown++, frame.data(), palette);
         p += 6 + size;
     }
+    wav = wavFile(video.pcm, video.frequency);
+    return true;
+}
+
+bool playTimeGateVideo(int number)
+{
+    Video video;
+    if (!readVideo(number, video, false))
+        return false;
+    const std::string& name = video.name;
+    const std::vector<u8>& data = video.data;
+    const size_t headerSize = video.headerSize;
+    const int frequency = video.frequency;
+    const std::vector<u8>& pcm = video.pcm;
+    const std::vector<size_t>& frameSound = video.frameSound;
+    const std::string pictures = "AN" + std::to_string(number);   // its folder of pictures, sequences/AN<n>
     printf(MAIN_OK "Time Gate video %s: %d frames, %.1f s\n", name.c_str(), (int)frameSound.size(), pcm.size() / (double)frequency);
 
     SaveTimerAnim();
@@ -240,7 +332,11 @@ bool playTimeGateVideo(int number)
     // unless it is a menu's picture, as the scripts' PICTURE (BUGS.md G20)
     const bool menuWasActive = g_menuActive;
     g_menuActive = true;
-    std::vector<u8> sound = wavFile(pcm, frequency);
+    // The modder's sound, else its own; the pictures keep the pace of its own
+    // sound either way
+    std::vector<u8> sound = customSound(number);
+    if (sound.empty())
+        sound = wavFile(pcm, frequency);
     osystem_playSample((char*)sound.data(), (int)sound.size());   // the mixer keeps a copy
 
     std::vector<u8> frame(kWidth * kHeight, 0);
@@ -282,6 +378,9 @@ bool playTimeGateVideo(int number)
                 if (timer - start >= due)
                 {
                     memcpy(logicalScreen, frame.data(), frame.size());
+                    // The modder's picture of it (Backgrounds/sequences/AN<n>/
+                    // 005.png...), as the other games' sequences (BUGS.md G52)
+                    coreSequenceFrameShown(pictures.c_str(), shown, frame.data());
                     if (newPalette)
                     {
                         setPalette(palette);

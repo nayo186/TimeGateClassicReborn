@@ -184,8 +184,18 @@ namespace
         s.v16(x[2]);
         s.v16(o.hotPoint.x); s.v16(o.hotPoint.y); s.v16(o.hotPoint.z);
         s.v16(o.hardMat);
+        // +0xB6, +0xB8, +0xBA: the way of movement mode 5 (BUGS.md G49)
         for (int i = 3; i < (int)x.size(); i++)
-            s.v16(x[i]);
+        {
+            if (i == 5)
+                s.v16(o.chaseLegs);
+            else if (i == 6)
+                s.v16(o.chaseTargetX);
+            else if (i == 7)
+                s.v16(o.chaseTargetZ);
+            else
+                s.v16(x[i]);
+        }
     }
 
     bool readFile(int slot, std::vector<u8>& data)
