@@ -941,8 +941,11 @@ void AllRedraw(int flagFlip)
                         // statue and the zombie rising from the lawn came out
                         // whole from below it (BUGS.md A38). AITD3 too: its
                         // preacher sank whole under the street instead of
-                        // melting into it (BUGS.md T8)
-                        if (g_gameId == AITD2 || g_gameId == AITD3)
+                        // melting into it (BUGS.md T8). Time Gate too
+                        // (TIMEGATE.EXE 1EF04 and 1F3E7, ground at 0x617D4):
+                        // the monks of the graveyard rose whole from their
+                        // graves (BUGS.md G61)
+                        if (g_gameId == AITD2 || g_gameId == AITD3 || g_gameId == TIMEGATE)
                             setWaterSurface(!(actorPtr->objectType & AF_WATER), groundLevel + actorPtr->worldY - actorPtr->roomY);
 
                         setCurrentBodyNum(actorPtr->bodyNum, bodyPtr, HQ_Bodys->string);
