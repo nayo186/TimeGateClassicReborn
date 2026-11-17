@@ -866,7 +866,10 @@ void AllRedraw(int flagFlip)
             // Anim2d
             SetClip(0, 0, 319, 199);
             int num = currentDrawActor & 0x7FFF;
-            AffHyb(TabAnim2d[num].pAnim->id, 0, 0, PtrAnim2D);
+            // Time Gate: the water of a fountain over a player's picture was
+            // a grey patch of the original picture (BUGS.md G59)
+            const int reference = g_gameId == TIMEGATE ? TabAnim2d[num].pAnimation->anims.front().id : -1;
+            AffHyb(TabAnim2d[num].pAnim->id, 0, 0, PtrAnim2D, reference);
         }
         else {
             tObject* actorPtr = &ListObjets[currentDrawActor];

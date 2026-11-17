@@ -134,8 +134,10 @@
 	// Draws a foreground mask of the camera over the objects behind it
 	void osystem_drawMask(int roomId, int maskId);
 	// Draws a 2D drawing (AITD2's sprites) at the current depth slice: `layer`
-	// is 320x200 pairs of colour and covered (1)
-	void osystem_drawSpriteLayer(const u8* layer);
+	// is 320x200 pairs of colour and covered (1). reference: for a part of the
+	// background that moves (a camera's 2D animation), its first frame, as
+	// `layer`; over a player's picture only the change from it is drawn
+	void osystem_drawSpriteLayer(const u8* layer, const u8* reference = nullptr);
 
 	// Opens a frame of the renderer (creates its resources the first time)
 	void osystem_startFrame();

@@ -199,6 +199,7 @@ static bool s_depthSlicedThisFrame = false;
 // order: each one on its own texture of the frame (bgfx reads a texture when
 // the frame is drawn, so one texture for several would show the last)
 static std::vector<bgfx::TextureHandle> s_spriteLayerTextures;
+static std::vector<bgfx::TextureHandle> s_spriteReferenceTextures;  // first frames (customSprite_ps)
 static int s_spriteLayersThisFrame = 0;
 
 // Glass polygons of this frame (Original mode), drawn after the scene
@@ -2068,7 +2069,7 @@ void osystem_drawMask(int roomId, int maskId)
     }
 }
 
-void osystem_drawSpriteLayer(const u8* layer)
+void osystem_drawSpriteLayer(const u8* layer, const u8* reference)
 {
     if (s_spriteLayersThisFrame >= (int)s_spriteLayerTextures.size())
         s_spriteLayerTextures.push_back(bgfx::createTexture2D(320, 200, false, 1, bgfx::TextureFormat::RG8U, BGFX_SAMPLER_POINT));
@@ -2116,6 +2117,37 @@ void osystem_drawSpriteLayer(const u8* layer)
     bgfx::setTexture(0, spriteTextureUniform, texture);
     bgfx::setTexture(1, paletteTextureUniform, g_paletteTexture);
     applyDepthSlice();
+
+    // A part of the background that moves, over a player's picture: only its
+    // change from its first frame (customSprite_ps, BUGS.md G59)
+    BackgroundPicture picture;
+    if (reference && g_getBackgroundPicture && g_getBackgroundPicture(&picture))
+    {
+        static bgfx::ProgramHandle customSpriteProgram = BGFX_INVALID_HANDLE;
+        static bgfx::UniformHandle customUniform = BGFX_INVALID_HANDLE;
+        static bgfx::UniformHandle originalUniform = BGFX_INVALID_HANDLE;
+        static bgfx::UniformHandle referenceUniform = BGFX_INVALID_HANDLE;
+        static bgfx::UniformHandle centreUniform = BGFX_INVALID_HANDLE;
+        if (!bgfx::isValid(customSpriteProgram))
+        {
+            customSpriteProgram = loadBgfxProgram("maskBackground_vs", "customSprite_ps");
+            customUniform = bgfx::createUniform("s_customBackground", bgfx::UniformType::Sampler);
+            originalUniform = bgfx::createUniform("s_originalBackground", bgfx::UniformType::Sampler);
+            referenceUniform = bgfx::createUniform("s_referenceTexture", bgfx::UniformType::Sampler);
+            centreUniform = bgfx::createUniform("u_customBackground", bgfx::UniformType::Vec4);
+        }
+        const int slot = s_spriteLayersThisFrame - 1;
+        while (slot >= (int)s_spriteReferenceTextures.size())
+            s_spriteReferenceTextures.push_back(bgfx::createTexture2D(320, 200, false, 1, bgfx::TextureFormat::RG8U, BGFX_SAMPLER_POINT));
+        bgfx::updateTexture2D(s_spriteReferenceTextures[slot], 0, 0, 0, 0, 320, 200, bgfx::copy(reference, 320 * 200 * 2));
+        bgfx::setTexture(5, referenceUniform, s_spriteReferenceTextures[slot]);
+        const float centre[4] = { picture.u0, picture.u1, 0.0f, 0.0f };
+        bgfx::setUniform(centreUniform, centre);
+        bgfx::setTexture(3, originalUniform, picture.original);
+        bgfx::setTexture(4, customUniform, picture.picture);
+        bgfx::submit(gameViewId, customSpriteProgram);
+        return;
+    }
     bgfx::submit(gameViewId, spriteProgram);
 }
 

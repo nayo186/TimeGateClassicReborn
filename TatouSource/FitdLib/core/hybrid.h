@@ -57,5 +57,7 @@ private:
 extern hqrEntryStruct<sHybrid>* HQ_Hybrides;
 
 // Draws entity `index` of a hybrid object at (X, Y), on its own layer at the
-// current depth slice
-void AffHyb(int index, int X, int Y, sHybrid* pHybrid);
+// current depth slice. referenceIndex: for a camera's 2D animation (a part of
+// the background that moves), the entity of its first frame; over a player's
+// picture only the change from it is drawn (osystem_drawSpriteLayer)
+void AffHyb(int index, int X, int Y, sHybrid* pHybrid, int referenceIndex = -1);

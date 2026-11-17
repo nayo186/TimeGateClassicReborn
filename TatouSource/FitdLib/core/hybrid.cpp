@@ -112,12 +112,12 @@ void sHybrid::readAnimations(uint8_t* buffer, int size) {
 // player's picture, and every 3D object was in front: AITD2's gate at the
 // start came and went and the characters walked in front of it (BUGS.md A4)
 static std::array<u8, 320 * 200 * 2> s_hybridLayer;
+static std::array<u8, 320 * 200 * 2> s_referenceLayer;
 
-void AffHyb(int index, int X, int Y, sHybrid* pHybrid) {
-    if (index < 0 || index >= (int)pHybrid->entities.size())
-        return;
+// The sprites of entity `index` on `layer`; its lines are drawn too if `lines`
+static void drawEntity(int index, int X, int Y, sHybrid* pHybrid, std::array<u8, 320 * 200 * 2>& layer, bool lines) {
     auto& entity = pHybrid->entities[index];
-    s_hybridLayer.fill(0);
+    layer.fill(0);
     for (int i = 0; i < entity.parts.size(); i++) {
         auto& part = entity.parts[i];
         switch (part.id) {
@@ -125,15 +125,24 @@ void AffHyb(int index, int X, int Y, sHybrid* pHybrid) {
         {
             int spriteNumber = part.cout + (((int)part.cin) << 8);
             // TODO: dx/dy
-            AffSpr(spriteNumber, part.XY[0][0] + X, part.XY[0][1] + Y + 1, s_hybridLayer.data(), pHybrid->sprites);
+            AffSpr(spriteNumber, part.XY[0][0] + X, part.XY[0][1] + Y + 1, layer.data(), pHybrid->sprites);
             break;
         }
         case 6: // line
-            for (int i = 0; i < part.XY.size()-1; i++) {
+            for (int i = 0; lines && i < (int)part.XY.size() - 1; i++) {
                 osystem_draw3dLine(part.XY[i][0], part.XY[i][1], 0, part.XY[i+1][0], part.XY[i+1][1], 0, part.cin);
             }
             break;
         }
     }
-    osystem_drawSpriteLayer(s_hybridLayer.data());
+}
+
+void AffHyb(int index, int X, int Y, sHybrid* pHybrid, int referenceIndex) {
+    if (index < 0 || index >= (int)pHybrid->entities.size())
+        return;
+    drawEntity(index, X, Y, pHybrid, s_hybridLayer, true);
+    const bool reference = referenceIndex >= 0 && referenceIndex < (int)pHybrid->entities.size();
+    if (reference)
+        drawEntity(referenceIndex, X, Y, pHybrid, s_referenceLayer, false);
+    osystem_drawSpriteLayer(s_hybridLayer.data(), reference ? s_referenceLayer.data() : nullptr);
 }
