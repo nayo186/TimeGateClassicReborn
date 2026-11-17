@@ -436,13 +436,16 @@ namespace
             AffObjet(-430, 0, -1520, angle, 0, 0, drum.get());
 
             // Its input: up and down (or left and right, or the wheel) turn
-            // it, Enter or a click chooses, Esc leaves
+            // it, Enter or a click chooses, Esc leaves. Up brings the next
+            // board and down the one before, so the drum rolls the way the
+            // arrow points (the other way round it was confusing, BUGS.md G54);
+            // left goes back and right forward, as before
             int move = 0;
             const float wheel = ImGui::GetIO().MouseWheel;
             if (wheel > 0.0f)
-                move = -1;
-            else if (wheel < 0.0f)
                 move = 1;
+            else if (wheel < 0.0f)
+                move = -1;
             if (waitRelease)
             {
                 if (!JoyD && !key && !Click)
@@ -450,9 +453,9 @@ namespace
             }
             else if (key == kEscape)
                 chosen = -1;
-            else if (JoyD & (1 | 4))
+            else if (JoyD & (2 | 4))
                 move = -1;
-            else if (JoyD & (2 | 8))
+            else if (JoyD & (1 | 8))
                 move = 1;
             else if (key == kEnter || Click || menuMouseClicked())
             {

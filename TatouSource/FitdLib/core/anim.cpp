@@ -750,6 +750,16 @@ void GereAnim(void)
 		currentProcessedActorPtr->zv.ZVZ1 += stepZ;
 		currentProcessedActorPtr->zv.ZVZ2 += stepZ;
 	} // end of movement management
+	else if(g_gameId == TIMEGATE)
+	{
+		// Time Gate forgets what an object touched when it does not move
+		// (TIMEGATE.EXE 20E32 counts 0 collisions, 21BFA clears the slots
+		// left): kept, the sheep of floor 5 standing still went on touching
+		// the hero after he had walked away, and every charge was a hit on
+		// its first frame, without running (BUGS.md G55)
+		for(int i = 0; i < 3; i++)
+			currentProcessedActorPtr->COL[i] = -1;
+	}
 
 	if(!currentProcessedActorPtr->YHandler.numSteps)
 	{

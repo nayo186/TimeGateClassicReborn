@@ -2,6 +2,15 @@
 
 Time Gate: Classic Reborn shares its engine with [Alone in the Dark: Classic Reborn](https://github.com/nayo186/AloneInTheDarkClassicReborn), built on [FITD](https://github.com/yaz0r/FITD) by yaz0r. The history of the engine is in those repositories; this one starts with the first release of *Time Gate*. Each fix is explained, with its cause, in `docs/baseline/BUGS.md` (letter G).
 
+## v0.1.0-alpha.4 (2026-11-17)
+
+Two fixes found while playing.
+
+**The game**
+
+- The sheep of the farm charges again: once you had stood next to it, it went on "touching" you even after you walked away, and every charge was a blow at once, without running. An object that stands still now forgets what it touched, as the original does (G55).
+- On the save and load screen, the up and down arrows turned the drum the opposite way to what you would expect: up now brings the next board and down the one before, and the mouse wheel does the same. Left and right are as before (G54).
+
 ## v0.1.0-alpha.3 (2026-11-13)
 
 A choice of graphics engine, fixes on Android, and a guide for modders.
