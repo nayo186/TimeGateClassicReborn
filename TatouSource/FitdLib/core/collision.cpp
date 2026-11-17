@@ -845,9 +845,12 @@ void GereDec()
                     // No climb: AITD2.EXE goes on with the other zones, which
                     // keep marking the foot of the ladder (HARD_DEC) for the
                     // script that takes the climb away (BUGS.md A19)
+                    // Time Gate does the same (TIMEGATE.EXE 23C91 goes on with
+                    // the next zone): it stopped there, and the zones after it
+                    // were never read for that object (BUGS.md G58)
                     if (life == -1)
                     {
-                        if (g_gameId == AITD2 || g_gameId == AITD3)
+                        if (g_gameId == AITD2 || g_gameId == AITD3 || g_gameId == TIMEGATE)
                             break;
                         return;
                     }

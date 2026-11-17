@@ -2,6 +2,16 @@
 
 Time Gate: Classic Reborn shares its engine with [Alone in the Dark: Classic Reborn](https://github.com/nayo186/AloneInTheDarkClassicReborn), built on [FITD](https://github.com/yaz0r/FITD) by yaz0r. The history of the engine is in those repositories; this one starts with the first release of *Time Gate*. Each fix is explained, with its cause, in `docs/baseline/BUGS.md` (letter G).
 
+## v0.1.0-alpha.5 (2026-11-17)
+
+Three fixes found while playing.
+
+**The game**
+
+- An object you have put down can be taken again, as in the original: a book left on a table could not be taken back, and the action in front of the table did nothing (G57).
+- After using an object from the inventory, its name stayed written over the video that follows (the sheepskin in the bell tower) (G56).
+- The invisible zones of a room are read as the original reads them: a zone with nothing for an object no longer hides the zones after it (where you stand, the floor under your feet, the way to the next room) (G58).
+
 ## v0.1.0-alpha.4 (2026-11-17)
 
 Two fixes found while playing.

@@ -332,6 +332,10 @@ bool playTimeGateVideo(int number)
     // unless it is a menu's picture, as the scripts' PICTURE (BUGS.md G20)
     const bool menuWasActive = g_menuActive;
     g_menuActive = true;
+    // A video has no texts: the last ones written (the inventory's name of
+    // the object used, as the sheepskin before AN6) stayed over all of it
+    // (BUGS.md G56)
+    uiLayer.fill(0);
     // The modder's sound, else its own; the pictures keep the pace of its own
     // sound either way
     std::vector<u8> sound = customSound(number);

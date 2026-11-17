@@ -815,8 +815,10 @@ void FoundObjet(int objIdx, int param)
     // Not offered again once taken; AITD1 neither once put down (0x4000).
     // AITD2 only looks at the inventory (AITD2.EXE, 6E1E): the key of the
     // irons Grace left by Carnby was never offered to him (BUGS.md A48). AITD3
-    // too (AITD3.EXE, 0xD526; BUGS.md T11)
-    const int notOffered = (g_gameId == AITD2 || g_gameId == AITD3) ? 0x8000 : 0xC000;
+    // too (AITD3.EXE, 0xD526; BUGS.md T11). Time Gate too (TIMEGATE.EXE
+    // 26E7A): the book put on the table of floor 5 room 8 could not be taken
+    // back (BUGS.md G57)
+    const int notOffered = (g_gameId == AITD2 || g_gameId == AITD3 || g_gameId == TIMEGATE) ? 0x8000 : 0xC000;
     if (param != 0 && (objPtr->foundFlag & notOffered))
     {
         return;
