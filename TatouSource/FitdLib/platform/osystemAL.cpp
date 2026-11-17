@@ -594,6 +594,12 @@ bool osystem_isVoicePlaying()
     return gSoloud && s_voice && gSoloud->isValidVoiceHandle(s_voiceHandle);
 }
 
+void osystem_pauseVoice(bool pause)
+{
+    if (gSoloud && s_voice)
+        gSoloud->setPause(s_voiceHandle, pause);
+}
+
 // Time Gate stops its 8 sound channels and the music for a video of the
 // scripts (TIMEGATE.EXE 30B30, 30950) and afterwards starts the music and the
 // looping sounds again (30970, 30B70): the lasers' hum and the museum's

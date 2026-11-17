@@ -104,6 +104,8 @@
 	bool osystem_isVoicePlaying();
 	// Stops the sound of osystem_playVoice
 	void osystem_stopVoice();
+	// Pauses (true) or goes on with (false) the sound of osystem_playVoice
+	void osystem_pauseVoice(bool pause);
 
 	// Plays a narrator voice by its file name (loose file or GAME.GOG)
 	void osystem_playVO(const char* voFileName);

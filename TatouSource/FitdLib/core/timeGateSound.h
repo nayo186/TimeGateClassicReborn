@@ -10,6 +10,8 @@
 void timeGatePlaySounds(const std::vector<int>& samples, bool looping);
 // Stops the list playing
 void timeGateStopSounds();
+// Pauses (true) or goes on with (false) the list where it was: the coin menu
+void timeGatePauseSounds(bool pause);
 // Every frame: the next sound when one ends
 void updateTimeGateSounds();
 // True when the last list that is not looping has ended (evalVar 43, 0x61986)

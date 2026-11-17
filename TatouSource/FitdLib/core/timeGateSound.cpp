@@ -27,6 +27,7 @@ namespace
     };
     SoundList s_list;
     bool s_ended = true;
+    bool s_paused = false;
 
     void playNext()
     {
@@ -47,6 +48,7 @@ namespace
 void timeGatePlaySounds(const std::vector<int>& samples, bool looping)
 {
     osystem_stopVoice();
+    s_paused = false;
     s_list = SoundList();
     s_list.samples = samples;
     s_list.looping = looping;
@@ -58,16 +60,24 @@ void timeGatePlaySounds(const std::vector<int>& samples, bool looping)
 
 void timeGateStopSounds()
 {
+    // Also the last sound of a list: it is still playing
+    osystem_stopVoice();
+    s_paused = false;
     if (!s_list.active)
         return;
-    osystem_stopVoice();
     s_list = SoundList();
     s_ended = true;
 }
 
+void timeGatePauseSounds(bool pause)
+{
+    s_paused = pause;
+    osystem_pauseVoice(pause);
+}
+
 void updateTimeGateSounds()
 {
-    if (!s_list.active || osystem_isVoicePlaying())
+    if (s_paused || !s_list.active || osystem_isVoicePlaying())
         return;
     if (s_list.next >= s_list.samples.size())
     {

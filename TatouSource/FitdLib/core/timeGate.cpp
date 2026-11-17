@@ -1189,6 +1189,10 @@ void timeGatePauseMenu()
     SaveTimerAnim();
     // The game's colours: the menus change them, and a save keeps them with its picture
     const palette_t gamePalette = currentGamePalette;
+    // A voice waits with the game: back in it, it goes on where it was; a
+    // save loaded, a new game or quitting end it (it went on over the save
+    // loaded, BUGS.md G60)
+    timeGatePauseSounds(true);
 
     bool loaded = false;
     bool done = false;
@@ -1244,6 +1248,10 @@ void timeGatePauseMenu()
         currentGamePalette = gamePalette;
         setPalette(currentGamePalette);
     }
+    if (loaded || FlagGameOver)
+        timeGateStopSounds();
+    else
+        timeGatePauseSounds(false);
     osystem_unfreezeSceneForMenu();
     RestoreTimerAnim();
     FlagInitView = 2;
