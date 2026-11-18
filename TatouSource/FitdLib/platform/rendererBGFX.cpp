@@ -2076,6 +2076,13 @@ void osystem_drawSpriteLayer(const u8* layer, const u8* reference)
     const bgfx::TextureHandle texture = s_spriteLayerTextures[s_spriteLayersThisFrame++];
     bgfx::updateTexture2D(texture, 0, 0, 0, 0, 320, 200, bgfx::copy(layer, 320 * 200 * 2));
 
+    // Time Gate: a frame of the scene with 2D drawings and no 3D model is a
+    // whole frame too (they come only from AllRedraw). Taken for one without
+    // 3D, the last whole image was shown instead: the camera on the altar,
+    // with only the lid opening, kept the picture of the cross (BUGS.md G62)
+    if (g_gameId == TIMEGATE)
+        g_3dFlushedThisFrame = true;
+
     static bgfx::ProgramHandle spriteProgram = BGFX_INVALID_HANDLE;
     static bgfx::UniformHandle spriteTextureUniform = BGFX_INVALID_HANDLE;
     static bgfx::UniformHandle paletteTextureUniform = BGFX_INVALID_HANDLE;
