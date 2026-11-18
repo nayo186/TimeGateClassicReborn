@@ -4,7 +4,7 @@ Play **Time Gate: Knight's Chase** (Infogrames, 1996) on modern PCs, with its or
 
 **[⬇ Download the latest version](https://github.com/nayo186/TimeGateClassicReborn/releases/latest)** for Windows, Linux, macOS or Android (both experimental): unpack it, run `Launcher.exe` (`Launcher` on Linux and macOS) and choose your GOG copy of the game; on Android, install the app and import the game (see [On Android](#on-android-experimental)). Nothing else to install.
 
-> **This is an alpha.** The museum and the first scenes after the journey back in time, in the prison, are playable; the rest of the game is being played through now. If something behaves differently from the original, please [report it](#reporting-a-problem): it helps a lot.
+**Time Gate: Knight's Chase is playable from start to end.** If something behaves differently from the original, please [report it](#reporting-a-problem): it helps a lot.
 
 <p align="center"><img src="docs/images/launcher.jpg" alt="The launcher" width="70%"><br><sub>The launcher</sub></p>
 
@@ -229,7 +229,7 @@ cmake --build TatouSource/build/linux-timegate
 
 **Development tools.** The CMake option `CLASSIC_REBORN_DEV_TOOLS` (on by default) builds tools that only work in debug mode (`debugMode = 1` in `launcher.cfg`). For a build to share with players, turn it off with `-DCLASSIC_REBORN_DEV_TOOLS=OFF`.
 
-**Releases.** The packages of each release are built by GitHub Actions (`.github/workflows/release.yml`): publishing a release with a tag like `v0.1.0-alpha.1` attaches `TimeGateClassicReborn-0.1.0-alpha.1-windows-x64.zip`, `...-linux-x64.tar.gz`, `...-macos.tar.gz` and `...-android.apk` to it. Locally: `powershell -ExecutionPolicy Bypass -File tools\makeRelease.ps1 -Version 0.1.0 -Edition timegate` on Windows, and `CLASSIC_REBORN_EDITION=timegate tools/makeRelease.sh 0.1.0` on Linux.
+**Releases.** The packages of each release are built by GitHub Actions (`.github/workflows/release.yml`): publishing a release with a tag like `v1.0.0` attaches `TimeGateClassicReborn-1.0.0-windows-x64.zip`, `...-linux-x64.tar.gz`, `...-macos.tar.gz` and `...-android.apk` to it. Locally: `powershell -ExecutionPolicy Bypass -File tools\makeRelease.ps1 -Version 0.1.0 -Edition timegate` on Windows, and `CLASSIC_REBORN_EDITION=timegate tools/makeRelease.sh 0.1.0` on Linux.
 
 The code is organised in layers (`util/` → `platform/` → `core/` + `scripts/` → `remaster/`); `docs/MAPA_CODIGO.md` describes the folders and files, and `docs/DICCIONARIO.md` every public function (both in Spanish for now). See also [CONTRIBUTING.md](CONTRIBUTING.md).
 

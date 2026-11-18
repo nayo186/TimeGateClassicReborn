@@ -2,6 +2,17 @@
 
 Time Gate: Classic Reborn shares its engine with [Alone in the Dark: Classic Reborn](https://github.com/nayo186/AloneInTheDarkClassicReborn), built on [FITD](https://github.com/yaz0r/FITD) by yaz0r. The history of the engine is in those repositories; this one starts with the first release of *Time Gate*. Each fix is explained, with its cause, in `docs/baseline/BUGS.md` (letter G).
 
+## v1.0.0 (2026-11-17)
+
+The first full release: *Time Gate: Knight's Chase* has been played from start to end.
+
+**The game**
+
+- The fountain's water, with an enhanced background, looked like a grey patch you could see through: only its ripples are drawn now, over the background (G59).
+- A character's voice went on over a save loaded from the menu: now it pauses while the menu is open, goes on when you go back to the game, and stops when you load a save, start a new game or quit (G60).
+- The monks of the graveyard came out of their graves with their whole body showing: as in the original, every object is cut at the height of the ground, so they rise from it (G61).
+- After putting the cross on the statue, the altar's lid opening was not seen: the picture of the cross stayed on screen during those seconds (G62).
+
 ## v0.1.0-alpha.5 (2026-11-17)
 
 Three fixes found while playing.
