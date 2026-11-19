@@ -12,6 +12,7 @@
 #include "settings.h"
 #include "advancedOptions.h"
 #include "customBackgrounds.h"
+#include "textFont.h"
 #include "controllerHint.h"
 #include "debugCheats.h"
 #include "objectEditor.h"
@@ -65,6 +66,7 @@ void registerRemasterHooks()
 
     g_isOptionsWindowOpen = advancedOptionsPausesGame;
     customBackgroundsRegister();
+    textFontRegister();       // the texts with the new font (graphics.newFont)
     controllerHintRegister();
     debugCheatsRegister();
     objectFixesRegister();    // every build: the visual fixes of 3D objects

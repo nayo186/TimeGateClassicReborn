@@ -54,6 +54,8 @@ New-Item -ItemType Directory -Force $staging | Out-Null
 Copy-Item (Join-Path $output 'Launcher.exe'), (Join-Path $output 'Tatou.exe') $staging
 Copy-Item (Join-Path $repo 'README.md'), (Join-Path $repo 'LICENSE') $staging
 Copy-Item (Join-Path $source 'Shared\assets\fonts\OFL.txt') (Join-Path $staging 'Gelasio-OFL.txt')
+# The licences of the fonts of the game texts, inside the programs (FitdLib/assets/fonts)
+Copy-Item (Join-Path $source 'FitdLib\assets\fonts\*-OFL.txt') $staging
 if ($timeGate) {
     Copy-Item (Join-Path $output 'TimGM6mb.sf2'), (Join-Path $output 'TimGM6mb-copyright.txt') $staging
     Copy-Item (Join-Path $source 'Shared\assets\fonts\Inter-OFL.txt') $staging

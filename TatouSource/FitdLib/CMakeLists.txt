@@ -188,6 +188,24 @@ add_custom_command(
 )
 target_sources(FitdLib PRIVATE "${MENU_FONT_DATA}")
 
+# The fonts of the game's texts (assets/fonts -> gameFont*.cpp, textFont.cpp):
+# Grenze Gotisch for Alone 1, IM Fell DW Pica Italic for Jack, Crimson Pro for
+# Alone 2, Arvo for Alone 3, MedievalSharp for Time Gate (all SIL OFL)
+foreach(GAME_FONT "GrenzeGotisch-SemiBold;kGameFontGothic" "IMFellDWPica-Italic;kGameFontItalic" "CrimsonPro-Medium;kGameFontBook" "Arvo-Regular;kGameFontSlab" "MedievalSharp-Regular;kGameFontMedieval")
+    list(GET GAME_FONT 0 GAME_FONT_FILE)
+    list(GET GAME_FONT 1 GAME_FONT_NAME)
+    set(GAME_FONT_DATA "${CMAKE_CURRENT_BINARY_DIR}/${GAME_FONT_NAME}.cpp")
+    add_custom_command(
+        OUTPUT "${GAME_FONT_DATA}"
+        COMMAND ${CMAKE_COMMAND} -DFILE=${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/${GAME_FONT_FILE}.ttf -DNAME=${GAME_FONT_NAME}
+                -DOUTPUT=${GAME_FONT_DATA} -P "${SHARED_DIR}/embedPicture.cmake"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/${GAME_FONT_FILE}.ttf" "${SHARED_DIR}/embedPicture.cmake"
+        COMMENT "Embedding the font ${GAME_FONT_FILE}"
+    )
+    target_sources(FitdLib PRIVATE "${GAME_FONT_DATA}")
+endforeach()
+
+
 # Time Gate: the controller drawing of its controls window
 # (Shared/assets/controller.png -> controllerPicture.cpp, Shared/ui/controllerPicture.h)
 if(CLASSIC_REBORN_EDITION STREQUAL "timegate")

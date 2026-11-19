@@ -95,6 +95,7 @@ Cada función pública del proyecto con para qué sirve, por capa y archivo. Las
 | `controlsAnalog` | The sticks' settings (dead zone, sensitivity, inverted Y, modern left stick) |
 | `controlsLeftStick` | The left stick as read at the last controlsUpdate |
 | `controlsUpdate` | Each frame (input.cpp): sets JoyD, key and Click from the keyboard state and the controller (null when none is connected) |
+| `controlsLook` | Look up (-1) or down (+1) of the zoomed aspect ratios, this frame, by how much |
 | `controlsActionHeld` | Whether any input of the action is held now (GameAction::Options: input.cpp) |
 
 ### `platform/fileAccess.h`
@@ -199,6 +200,7 @@ Cada función pública del proyecto con para qué sirve, por capa y archivo. Las
 | `osystem_playVoice` | Time Gate's channel of chained sounds (its voices): plays a WAV in the voices and effects volume, stopping the one before |
 | `osystem_isVoicePlaying` | True while the sound of osystem_playVoice is playing |
 | `osystem_stopVoice` | Stops the sound of osystem_playVoice |
+| `osystem_pauseVoice` | Pauses (true) or goes on with (false) the sound of osystem_playVoice |
 | `osystem_playVO` | Plays a narrator voice by its file name (loose file or GAME.GOG) |
 | `osystem_playVocByIndex` | Plays the narrator voice of a book or message by its number |
 | `osystem_playVocPage` | Plays the narrator voice of one page of a book |
@@ -209,7 +211,7 @@ Cada función pública del proyecto con para qué sirve, por capa y archivo. Las
 | `osystem_findNarrators` | The narrators with voices: the folders of Voices in the working folder |
 | `osystem_createMask` | Makes the texture of a foreground mask from its 320x200 shape |
 | `osystem_drawMask` | Draws a foreground mask of the camera over the objects behind it |
-| `osystem_drawSpriteLayer` | Draws a 2D drawing (AITD2's sprites) at the current depth slice: `layer` is 320x200 pairs of colour and covered (1) |
+| `osystem_drawSpriteLayer` | Draws a 2D drawing (AITD2's sprites) at the current depth slice: `layer` is 320x200 pairs of colour and covered (1). reference: for a part of the background that moves (a camera's 2D animation), its first frame, as `layer`; over a player's picture only the change from it is drawn |
 | `osystem_startFrame` | Opens a frame of the renderer (creates its resources the first time) |
 | `osystem_stopFrame` | Empty: the renderer needs nothing at the end of a frame |
 | `osystem_setClip` | Sets the drawing clip rectangle (320x200 coordinates) |
@@ -244,6 +246,9 @@ Cada función pública del proyecto con para qué sirve, por capa y archivo. Las
 | `osystem_drawFrozenSceneBackground` | Draws the frozen scene behind a menu |
 | `osystem_windowToGame` | Window position (pixels) to the 320x200 game screen, through the scene rectangle (graphics.aspect leaves black bars); false before the first frame |
 | `osystem_getSceneRect` | Rectangle of the window (pixels) where the play area is drawn: x, y, width, height |
+| `osystem_setPlayView` | A frame of play was drawn (AllRedraw, Alone 1, Jack, Alone 2): the rows of the character on screen (-1: not seen), the rows of everyone moving on screen with it (the scenes of the intro: who comes in) and the camera; the zoomed aspect ratios follow them (widescreen.cpp) |
+| `osystem_screenOverPlay` | A screen over the game is shown (inventory, pause menu, a book, the "You find" window, a sequence, a picture): the zoomed aspect ratios show it 4:3 whole; calls nest. ScreenOverPlay does it for a block |
+| `osystem_textFade` | Brightness for the texts: 1, or the screen's fade when they are drawn outside the scene (zoomed aspect ratios) |
 | `osystem_suspendScreenEffects` | Plain screens (title armadillo, intro screens, books) suspend the screen effects without changing the player's options; calls nest (BUGS.md C15) |
 | `osystem_setDepthSlice` | Limits the depth drawn (-1: all), used to draw objects in front of or behind a mask |
 | `osystem_depthSlicedThisFrame` | True if a depth slice was used this frame |
@@ -277,6 +282,9 @@ Cada función pública del proyecto con para qué sirve, por capa y archivo. Las
 | `g_getBackgroundPicture` | The picture for the screen on show; false: the game's own background |
 | `g_getMaskPicture` | The player's picture of a mask of the game (invalid handle: none); originalShape: 16:10 like the scene, otherwise the shape of the picture |
 | `g_onScreenUploaded` | The 320x200 screen was sent to the graphics card |
+| `g_filterTextLayer` | The text layer (320x200 palette indexes) is about to be shown: the layer to show instead (the letters the new font draws taken out); null: as it is, no new font in this game or "Enhanced text" off |
+| `g_drawTextOverlay` | Right after the text layer, in the same view: the new font's letters |
+| `g_getWidescreenSides` | The still picture behind the 4:3 screens and beyond the scene (blurred; its width / height in aspect); invalid: black |
 | `g_onMaskCreated` | A mask of the game was made (its 320x200 shape and rectangle) |
 
 ### `platform/rendererBGFXInternal.h`
@@ -324,8 +332,18 @@ Cada función pública del proyecto con para qué sirve, por capa y archivo. Las
 | `touchControlsFrame` | Once per frame before the inputs are read (window thread): places the controls for the window; menuOpen: the F1 window owns the screen (all let go) |
 | `touchPadButton` | A button of the virtual controller (SDL_GamepadButton) is held |
 | `touchPadAxis` | An axis of the virtual controller (SDL_GamepadAxis): the left stick from -1 to 1, the right trigger 0 or 1; 0 for the rest |
+| `touchControlsAt` | A shown button or the D-pad of the visible controls is at that point of the window (SDL's mouse coordinates). The mouse SDL makes from such a touch must not reach the menus: Start on the right picked Carnby (BUGS.md C79) |
 | `touchControlsHide` | The keyboard or a controller was used: the controls hide until a touch |
 | `touchControlsDraw` | Draws the controls over the game (game thread, inside the ImGui frame) |
+
+### `platform/widescreen.h`
+
+| Función | Para qué sirve |
+| --- | --- |
+| `widescreenZoomed` | A zoomed aspect ratio is chosen |
+| `widescreenSceneQuad` | Where the scene goes in the window this frame (x, y, width, height; it may go out of the window above and below while playing), from the scene rectangle the aspect ratio gives (x, y, width, height). Called once per frame, when the image is composed: it moves the view. |
+| `widescreenTextBox` | The 4:3 box of the window where texts and menus go (x, y, width, height) |
+| `widescreenPlaying` | This frame is a frame of play: inside the game's loop, no screen over it (osystem_screenOverPlay) |
 
 ## core: El juego de 1992
 
@@ -442,6 +460,7 @@ Cada función pública del proyecto con para qué sirve, por capa y archivo. Las
 | `g_onObjectDraw` | An object of the camera is about to be drawn at this position (world units), rotation (1024 = a full turn) and size (renderer.h); listIndex is its place in ListObjets. A listener may change how it is drawn (a visual fix: the game keeps the real position) and returns false to skip drawing it this frame. |
 | `g_isGameFrozenLive` | True while a tool freezes the game but needs the scene drawn every frame (object editor): PlayWorld then only redraws, with the clock stopped. |
 | `g_isOptionsWindowOpen` | True while an options window over the game is open (F1): the game waits. |
+| `g_onTextPrinted` | The game is about to write a text with its font (PrintFont): where (320x200, top-left of the first letter), the letters (the game's own codes, ending in 0) and the palette color. The new font draws it over (textFont.cpp). |
 
 ### `core/debugger.h`
 
@@ -498,7 +517,7 @@ Cada función pública del proyecto con para qué sirve, por capa y archivo. Las
 | `readEntites` | Reads the entities of a hybrid object (AITD2 and later) |
 | `readSprites` | Reads the sprites of a hybrid object |
 | `readAnimations` | Reads the animations of a hybrid object |
-| `AffHyb` | Draws entity `index` of a hybrid object at (X, Y), on its own layer at the current depth slice |
+| `AffHyb` | Draws entity `index` of a hybrid object at (X, Y), on its own layer at the current depth slice. referenceIndex: for a camera's 2D animation (a part of the background that moves), the entity of its first frame; over a player's picture only the change from it is drawn (osystem_drawSpriteLayer) |
 
 ### `core/inventory.h`
 
@@ -754,7 +773,7 @@ Cada función pública del proyecto con para qué sirve, por capa y archivo. Las
 | `restartSound` | Plays a sample from its start, even if the same one is still playing |
 | `playSoundLooping` | Plays sound effect number `num` in a loop |
 | `channelLoopSample` | Time Gate: the sample a channel plays in a loop, -1 if none |
-| `playChannelSound` | Time Gate's 8 sound channels (TIMEGATE.EXE 30BC0, 30C90, 30DB0, 31050): plays a sample on a channel (7 for any number past it), once or in a loop, in place of the one it had; -1 stops the channel |
+| `playChannelSound` | Time Gate's 8 sound channels (TIMEGATE.EXE 30BC0, 30C90, 30DB0, 31050): plays a sample on a channel (7 for any number past it), once or in a loop, in place of the one it had, at a volume of 0 to 32767; -1 stops the channel |
 | `stopChannelSound` | Stops a channel's sound |
 | `setChannelSoundVolume` | The volume of a channel's sound, 0 to 32767 as the scripts give it |
 | `playSoundThen` | Plays a sound effect and then another one |
@@ -772,12 +791,20 @@ Cada función pública del proyecto con para qué sirve, por capa y archivo. Las
 | `timeGatePauseMenu` | Esc during Time Gate's game: its menu of coins (load, save, new game, quit); Esc again goes back to the game |
 | `timeGateInventory` | Time Gate's inventory: the stained glass, the object in 3D, its actions |
 
+### `core/timeGatePath.h`
+
+| Función | Para qué sirve |
+| --- | --- |
+| `timeGatePathLoadFloor` | Reads the floor's obstacles (30700, when a floor is loaded; 2F720) |
+| `timeGateFindPath` | The way from a point to another of the grid (304B0): the number of its legs, 0 if there is none; `nextX`, `nextZ` are where the first leg ends |
+
 ### `core/timeGateSound.h`
 
 | Función | Para qué sirve |
 | --- | --- |
 | `timeGatePlaySounds` | Time Gate's chained sounds of SAMPLES.PAK (its voices): plays them one after another, at once (TIMEGATE.EXE 30F30, life 0x61); `looping` starts again from the first when the last ends, until timeGateStopSounds (30FB0 and 31030, life 0x79 and 0x7A). One channel, as the original: a new list stops the one playing |
 | `timeGateStopSounds` | Stops the list playing |
+| `timeGatePauseSounds` | Pauses (true) or goes on with (false) the list where it was: the coin menu |
 | `updateTimeGateSounds` | Every frame: the next sound when one ends |
 | `timeGateSoundsEnded` | True when the last list that is not looping has ended (evalVar 43, 0x61986) |
 
@@ -916,6 +943,12 @@ Cada función pública del proyecto con para qué sirve, por capa y archivo. Las
 | `objectFixesSave` | Writes the fixes into the project's file for this game (the next build compiles them in); returns false if it cannot |
 | `objectFixesFileName` | Name of the fixes file of the current game (aitd1.cfg, jack.cfg or aitd2.cfg) |
 
+### `remaster/graphics/textFont.h`
+
+| Función | Para qué sirve |
+| --- | --- |
+| `textFontRegister` | Fills the hooks (core: each text written; platform: the text layer shown) |
+
 ### `remaster/ui/advancedOptions.h`
 
 | Función | Para qué sirve |
@@ -966,6 +999,12 @@ Cada función pública del proyecto con para qué sirve, por capa y archivo. Las
 | --- | --- |
 | `name` | — |
 | `imagePath` | The image the voices come from, or empty (loose files) |
+
+### `Shared/rendererChoice.h`
+
+| Función | Para qué sirve |
+| --- | --- |
+| `canChoose` | Whether the system lets the player choose (more than one) |
 
 ### `Shared/ui/launcherScreen.h`
 

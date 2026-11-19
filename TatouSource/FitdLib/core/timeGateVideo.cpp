@@ -313,6 +313,7 @@ bool decodeTimeGateVideo(int number, const std::function<void(int frame, const u
 
 bool playTimeGateVideo(int number)
 {
+    ScreenOverPlay screenOverPlay;   // a 4:3 screen in the zoomed aspect ratios (widescreen.cpp)
     Video video;
     if (!readVideo(number, video, false))
         return false;

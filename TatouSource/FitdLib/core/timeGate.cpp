@@ -1185,6 +1185,7 @@ namespace
 
 void timeGatePauseMenu()
 {
+    ScreenOverPlay screenOverPlay;   // a 4:3 screen in the zoomed aspect ratios (widescreen.cpp)
     osystem_freezeSceneForMenu();
     SaveTimerAnim();
     // The game's colours: the menus change them, and a save keeps them with its picture

@@ -2233,6 +2233,9 @@ void processLife(int lifeNum, bool callFoundLife)
                 }
 
                 SaveTimerAnim();
+                // A 4:3 screen in the zoomed aspect ratios (widescreen.cpp):
+                // AITD2's story pictures with text came out zoomed and cut
+                ScreenOverPlay screenOverPlay;
 
                 FadeOutPhys(32, 0);
                 // The player's own picture replaces it, as for PICTURE: AITD2's
@@ -2719,6 +2722,7 @@ void processLife(int lifeNum, bool callFoundLife)
             }
             case LM_PICTURE: // displayScreen
             {
+                ScreenOverPlay screenOverPlay;   // a 4:3 picture in the zoomed aspect ratios (widescreen.cpp)
                 appendFormated("LM_PICTURE ");
 
                 int pictureIndex = readNextArgument("pictureIndex");

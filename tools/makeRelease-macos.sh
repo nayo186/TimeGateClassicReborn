@@ -66,6 +66,9 @@ cp "$repo/README.md" "$repo/LICENSE" "$staging/"
 cp "$source/Shared/assets/fonts/OFL.txt" "$staging/Gelasio-OFL.txt"
 chmod 755 "$staging/Launcher" "$staging/Tatou"
 chmod 644 "$staging/README.md" "$staging/LICENSE" "$staging/Gelasio-OFL.txt"
+# The licences of the fonts of the game texts, inside the programs (FitdLib/assets/fonts)
+cp "$source"/FitdLib/assets/fonts/*-OFL.txt "$staging/"
+chmod 644 "$staging"/*-OFL.txt
 if [ "$edition" = timegate ]; then
     cp "$output/TimGM6mb.sf2" "$output/TimGM6mb-copyright.txt" "$source/Shared/assets/fonts/Inter-OFL.txt" "$staging/"
     chmod 644 "$staging/TimGM6mb.sf2" "$staging/TimGM6mb-copyright.txt" "$staging/Inter-OFL.txt"
