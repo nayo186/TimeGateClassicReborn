@@ -101,6 +101,8 @@ GOG sells *Time Gate* one language at a time: English, Spanish, German or Italia
 
 The launcher then offers that language in **Game language**. A folder without its texts, voices or scripts is not offered (`launcher.log` says what it lacks).
 
+**Or one file.** Instead of the folder, a language can be a single `<language>.language` file in `UserData\TimeGate\Languages` (for example `Spanish.language`): a language pack, with the same files inside and much smaller. Most dubbed videos have the same pictures in every language and only their voice changes, so a pack keeps only that voice (as an `.ogg`) and the game shows your installation's video with it; a video whose pictures change (the intro's credits) goes in whole. A folder with the same name comes first. How to make one is in the [modding guide](MODDING.md#language-packs-language).
+
 The language of the menus (launcher and F1) is chosen apart, with **Interface** at the top right of the launcher.
 
 ## Music
@@ -159,7 +161,7 @@ UserData/
     ├── tatou.log          log of the last session (tatou.prev.log: the one before)
     ├── crash_log.txt      written if the game closes by itself
     ├── SoundFonts/        your soundfonts (see Music)
-    ├── Languages/         other languages, one folder each (see Languages)
+    ├── Languages/         other languages, one folder or one .language file each (see Languages)
     ├── Backgrounds/       your backgrounds, full-screen pictures and videos (see Modding)
     ├── Masks/             your masks (see Modding)
     ├── Exports/           what F1 exports: the game's own pictures, to use as a base

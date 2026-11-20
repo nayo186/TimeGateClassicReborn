@@ -12,6 +12,7 @@ This guide is for anyone who wants to change how *Time Gate: Knight's Chase* loo
 | Videos, picture by picture, and their sound | `UserData\TimeGate\Backgrounds\sequences` | [Videos](#videos) |
 | Music (the soundfont that plays it) | `UserData\TimeGate\SoundFonts` | [Music](#music) |
 | Languages | `UserData\TimeGate\Languages` | [Languages](#languages) |
+| A language in one file (language pack) | `UserData\TimeGate\Languages\<language>.language` | [Language packs](#language-packs-language) |
 
 **Not yet:** the 3D models and their textures, the sound effects and the texts.
 
@@ -25,7 +26,8 @@ UserData/
     ├── Masks/                   masks (PNG)
     ├── Exports/                 what F1 exports: the originals, to use as a base
     ├── SoundFonts/              soundfonts for the music (.sf2)
-    └── Languages/<language>/    other languages
+    ├── Languages/<language>/    other languages, one folder each...
+    └── Languages/<language>.language   ...or one file each (language packs)
 ```
 
 The launcher creates these folders the first time it opens. A mod is shared as these same folders: whoever uses it copies them into their own `UserData` (see [Sharing a mod](#sharing-a-mod)).
@@ -98,6 +100,22 @@ The videos with voices are in the language of your game, so the exported sound i
 ## Languages
 
 The game can be played in another language you own from a folder of `UserData\TimeGate\Languages`, with the texts, voices and videos of that language: see [Languages](README.md#languages) in the README.
+
+A language is **not only sound**: it has its texts (`FRANCAIS.PAK`, so named in every language), its voices and sounds (`SAMPLES.PAK`), its scripts (`LISTLIFE.PAK`), its letters (`ITD_RESS.PAK`, with the accents) and other data files, and its dubbed videos (`cd/TIMEGATE/AN*.MUX`, pictures and sound together).
+
+### Language packs (.language)
+
+A language pack is one language in a single file, instead of its folder.
+
+- **Where:** in `UserData\TimeGate\Languages`, as `<language>.language`, named as the folder would be: `English`, `French`, `German`, `Italian` or `Spanish` (`Spanish.language`).
+- **Inside:** a ZIP without compression with the files of a language folder, with the same names and no folders: `FRANCAIS.PAK`, `SAMPLES.PAK` and `LISTLIFE.PAK` (needed: a pack without them is not offered) and the other data files of that edition; and its videos in `cd/TIMEGATE/`:
+  - `cd/TIMEGATE/AN<n>.MUX`, the whole video, when its pictures are its own (the intro's credits, `AN0`; in Italian also `AN1`);
+  - or only its voice, `cd/TIMEGATE/AN<n>.ogg`, when its pictures are those of your installation: the game shows your video with that voice. Most dubbed videos are like this, so a pack is much smaller than the folder (Spanish: 67 MB of files, a 17 MB pack). The voice must last as long as the video.
+- **Making one:** `python tools/makeTimeGateLanguagePack.py "<language folder>" "<your game folder>" Spanish.language`. It compares each video with yours: when only the sound changes it keeps the voice as `.ogg` (it needs ffmpeg), otherwise the whole video; the edition's read-me files are left out. With 7-Zip: select the files and the `cd` folder, add them to a ZIP with the compression level **Store**, and rename the `.zip` to `.language` (with the whole videos).
+- A language folder with the same name comes before the file.
+- `tatou.log` says it is used: `Language pack: Languages\Spanish.language (15 files)`, and for a video that plays with the pack's voice `Time Gate video AN1: the language's voice (cd/TIMEGATE/AN1.ogg)`.
+- A video's sound of yours (`Backgrounds\sequences\AN<n>\sound.ogg`, see [Videos](#videos)) comes before the language's voice.
+- These are the game's own files: share a language pack only with whoever owns that edition of the game, never publicly.
 
 ## Sharing a mod
 

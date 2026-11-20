@@ -1006,6 +1006,15 @@ Cada función pública del proyecto con para qué sirve, por capa y archivo. Las
 | --- | --- |
 | `canChoose` | Whether the system lets the player choose (more than one) |
 
+### `Shared/zipArchive.h`
+
+| Función | Para qué sirve |
+| --- | --- |
+| `path` | — |
+| `entries` | Every file, by lower-case name with '/' separators |
+| `get16` | — |
+| `get32` | — |
+
 ### `Shared/ui/launcherScreen.h`
 
 | Función | Para qué sirve |

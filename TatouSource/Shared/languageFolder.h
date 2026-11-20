@@ -21,6 +21,7 @@
 #pragma once
 
 #include "cdImage.h"
+#include "zipArchive.h"
 
 #include <cctype>
 #include <cstdint>
@@ -214,6 +215,38 @@ inline bool openTimeGateLanguageImage(const std::filesystem::path& folder, CdIma
 {
     return openLanguageImage(folder, "FRANCAIS.PAK", image, kTimeGateImageFolder)
         && image.hasFile(kTimeGateImageFolder, "SAMPLES.PAK") && image.hasFile(kTimeGateImageFolder, "LISTLIFE.PAK");
+}
+
+// Time Gate: a language in one file, a language pack: Languages\
+// Spanish.language next to where its folder would be (a ZIP without
+// compression, zipArchive.h; tools/makeTimeGateLanguagePack.py) with the
+// files of a language folder: its texts, voices and scripts, its other data
+// files, and its videos as cd/TIMEGATE/ANn.MUX, or only their voice as
+// cd/TIMEGATE/ANn.ogg when the picture is the installed game's. Opened if
+// it has the texts, the voices and the scripts; a folder comes first
+inline bool openTimeGateLanguagePack(const std::filesystem::path& folder, ZipArchive& pack)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const std::string wanted = folder.filename().string();
+    for (const fs::directory_entry& entry : fs::directory_iterator(folder.parent_path(), ec))
+    {
+        std::string ext = entry.path().extension().string();
+        for (char& c : ext)
+            c = (char)tolower((unsigned char)c);
+        if (ext != ".language" || entry.path().stem().string() != wanted || !entry.is_regular_file(ec))
+            continue;
+        if (!pack.open(entry.path()))
+            return false;
+        for (const char* name : { "FRANCAIS.PAK", "SAMPLES.PAK", "LISTLIFE.PAK" })
+        {
+            const ZipArchive::Entry* file = pack.find(name);
+            if (!file || file->method != 0)
+                return false;
+        }
+        return true;
+    }
+    return false;
 }
 
 // Time Gate: what a language folder lacks to be used over the installed

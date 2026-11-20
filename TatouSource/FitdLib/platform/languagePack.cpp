@@ -27,6 +27,8 @@ extern "C" { extern char homePath[512]; }
 static std::string s_folder;
 static CdImage s_image;
 static bool s_hasImage = false;
+static ZipArchive s_pack;        // Time Gate: a language pack (Languages\<name>.language)
+static bool s_hasPack = false;
 static const char* s_imageFolder = kLanguageImageFolder;   // the language's folder in its image
 static std::mutex s_cacheMutex;
 static std::map<std::string, std::vector<unsigned char>> s_cache;   // files read from the language's image
@@ -44,6 +46,7 @@ bool selectLanguagePack(const std::string& language)
 {
     s_folder.clear();
     s_hasImage = false;
+    s_hasPack = false;
     s_imageFolder = kLanguageImageFolder;
     const char* name = languagePackName(language.c_str());
     if (!*name)
@@ -79,12 +82,21 @@ bool selectTimeGateLanguagePack(const std::string& language)
 {
     s_folder.clear();
     s_hasImage = false;
+    s_hasPack = false;
     const char* name = timeGateLanguageFolder(language.c_str());
     if (!*name)
         return false;
     const std::string folder = matchFileCase(std::string(kLanguagesFolder) + "/" + name) + "/";
     if (!pathExists(folder))
     {
+        // A language pack instead of the folder (languageFolder.h)
+        if (openTimeGateLanguagePack(fs::u8path(folder.substr(0, folder.size() - 1)), s_pack))
+        {
+            s_folder = folder;
+            s_hasPack = true;
+            printf(MAIN_OK "Language pack: %s (%d files)\n", s_pack.path().string().c_str(), (int)s_pack.entries().size());
+            return true;
+        }
         printf(MAIN_WARN "Language folder %s not found: the installed language" CON_RESET "\n", folder.c_str());
         return false;
     }
@@ -120,17 +132,18 @@ static const char* imageVideoName(const char* name)
     return name + length;
 }
 
-// A file of the language's CD image, read once and kept; null if not there
+// A file of the language's CD image or language pack, read once and kept;
+// null if not there
 static const std::vector<unsigned char>* imageFile(const char* name)
 {
-    if (!s_hasImage || !s_image.hasFile(s_imageFolder, name))
+    if (s_hasPack ? s_pack.find(name) == nullptr : (!s_hasImage || !s_image.hasFile(s_imageFolder, name)))
         return nullptr;
     std::lock_guard<std::mutex> lock(s_cacheMutex);
     auto found = s_cache.find(name);
     if (found == s_cache.end())
     {
         std::vector<unsigned char> data;
-        if (!s_image.readFile(s_imageFolder, name, data))
+        if (s_hasPack ? !s_pack.read(name, data) : !s_image.readFile(s_imageFolder, name, data))
             return nullptr;
         found = s_cache.emplace(name, std::move(data)).first;
     }
@@ -187,6 +200,12 @@ bool DataFile::open(const char* name)
         // each plays once; kept, they would fill the phone's memory)
         const char* video = s_hasImage ? imageVideoName(name) : nullptr;
         if (video && s_image.hasFile(s_imageFolder, video) && s_image.readFile(s_imageFolder, video, m_own))
+        {
+            m_memory = &m_own;
+            return true;
+        }
+        // A video (or its voice) of the language pack: the same, for this time only
+        if (s_hasPack && imageVideoName(name) && s_pack.read(name, m_own))
         {
             m_memory = &m_own;
             return true;

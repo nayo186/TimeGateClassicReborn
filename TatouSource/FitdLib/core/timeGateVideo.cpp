@@ -251,6 +251,23 @@ namespace
         return true;
     }
 
+    // The chosen language's voice for a video whose picture is the installed
+    // game's: cd/TIMEGATE/AN<n>.ogg in its folder or language pack (a pack
+    // keeps only the voice of those videos, languageFolder.h); empty if none
+    std::vector<u8> languageVoice(int number)
+    {
+        std::vector<u8> sound;
+        const std::string name = "cd/TIMEGATE/AN" + std::to_string(number) + ".ogg";
+        DataFile file;
+        if (!file.open(name.c_str()))
+            return sound;
+        sound.resize((size_t)file.size());
+        sound.resize(file.read(sound.data(), sound.size()));
+        if (!sound.empty())
+            printf(MAIN_TAG "Time Gate video AN%d: the language's voice (%s)\n", number, name.c_str());
+        return sound;
+    }
+
     // The modder's sound for the video, with "Custom backgrounds" on:
     // Backgrounds/sequences/AN<n>/sound.wav (or .ogg, .mp3, .flac); empty if
     // there is none, and then the video's own sound plays (BUGS.md G52)
@@ -337,9 +354,11 @@ bool playTimeGateVideo(int number)
     // the object used, as the sheepskin before AN6) stayed over all of it
     // (BUGS.md G56)
     uiLayer.fill(0);
-    // The modder's sound, else its own; the pictures keep the pace of its own
-    // sound either way
+    // The modder's sound, else the language's voice of it, else its own; the
+    // pictures keep the pace of its own sound either way
     std::vector<u8> sound = customSound(number);
+    if (sound.empty())
+        sound = languageVoice(number);
     if (sound.empty())
         sound = wavFile(pcm, frequency);
     osystem_playSample((char*)sound.data(), (int)sound.size());   // the mixer keeps a copy

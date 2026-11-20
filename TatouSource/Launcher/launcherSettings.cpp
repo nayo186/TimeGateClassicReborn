@@ -448,7 +448,13 @@ static std::vector<GameLanguage> findTimeGateLanguages(const GameInstall& instal
             continue;
         const fs::path folder = languages / timeGateLanguageFolder(language.folder);
         if (!fs::is_directory(folder, ec))
+        {
+            // A language pack instead of the folder (Languages\Spanish.language)
+            ZipArchive pack;
+            if (openTimeGateLanguagePack(folder, pack))
+                found.push_back({ language.folder, language.name });
             continue;
+        }
         const std::string missing = missingTimeGateLanguageFiles(folder);
         if (!missing.empty())
         {
