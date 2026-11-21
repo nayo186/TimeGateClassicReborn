@@ -2,6 +2,33 @@
 
 Time Gate: Classic Reborn shares its engine with [Alone in the Dark: Classic Reborn](https://github.com/nayo186/AloneInTheDarkClassicReborn), built on [FITD](https://github.com/yaz0r/FITD) by yaz0r. The history of the engine is in those repositories; this one starts with the first release of *Time Gate*. Each fix is explained, with its cause, in `docs/baseline/BUGS.md` (letter G).
 
+## v1.0.1 (2026-11-21)
+
+The new font, the widescreen view and languages in one file, from *Alone in the Dark: Classic Reborn*; lighter screen effects, and several Android fixes.
+
+**New**
+
+- With **Enhanced text**, a new smooth font in every text (captions, subtitles, inventory, menus, the newspaper), in every language; the German Ö shows again (G63).
+- **Widescreen view**: **16:9 (zoomed)** and **16:10 (zoomed)** in **Aspect ratio** fill a 16:9 screen with no stretching and no black bars; the view follows the character, and **Look up / Look down** move it. Menus, the inventory and the newspaper stay whole (G64).
+- **Languages in one file**: another language of the game can be a single `.language` file, with its texts, voices and dubbed videos; the modding guide explains how to make one (G65).
+- A new size in **Resolution**, **800**, the size by default on Android (G66).
+
+**Faster**
+
+- **Edge smoothing (FXAA)** and **Ambient occlusion (SSAO)** work only around the 3D models, and the ambient occlusion at half size; with a zoomed aspect ratio the effects work only on the part of the scene seen on screen (G66).
+- Custom masks are prepared together when a camera is shown, are not read again after a menu, and keep only the part that covers something: a shorter stop at a change of camera (G67).
+
+**Android**
+
+- Coming back to the game after a call or another app left the screen black, and with Vulkan the game closed: it now carries on where it was (G66).
+- The game is always fullscreen; the **Fullscreen** option made the system bars appear over the touch buttons and is no longer shown (G66).
+- The menus' **scroll bar** can be dragged with a finger, and a flicked list keeps going and slows down (G66).
+- The main menu says **Exit** in the language of the game instead of "Return to Linux" (G66).
+
+**Removed**
+
+- The **Animation smoothing** option: the game already blends the poses in every frame, and the difference could hardly be seen (G66).
+
 ## v1.0.0 (2026-11-17)
 
 The first full release: *Time Gate: Knight's Chase* has been played from start to end.
