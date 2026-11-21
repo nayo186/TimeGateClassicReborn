@@ -49,8 +49,10 @@ extern void (*g_onFrameStart)();
 extern bool (*g_getBackgroundPicture)(BackgroundPicture* out);
 
 // The player's picture of a mask of the game (invalid handle: none);
-// originalShape: 16:10 like the scene, otherwise the shape of the picture
-extern bgfx::TextureHandle (*g_getMaskPicture)(int roomId, int maskId, bool* originalShape);
+// originalShape: 16:10 like the scene, otherwise the shape of the picture;
+// crop: the part of the player's mask the texture holds (u0, v0, u1, v1 of
+// the whole mask: only the part with something white or grey is kept)
+extern bgfx::TextureHandle (*g_getMaskPicture)(int roomId, int maskId, bool* originalShape, float crop[4]);
 
 // The 320x200 screen was sent to the graphics card
 extern void (*g_onScreenUploaded)(const unsigned char* screen);

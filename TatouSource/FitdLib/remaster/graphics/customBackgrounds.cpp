@@ -135,7 +135,14 @@ static bool s_screenOnScreen = false;
 struct DecodedPicture
 {
     fs::file_time_type time;            // of the file decoded
-    unsigned char* pixels = nullptr;    // RGBA, stbi's (freed with it)
+    unsigned char* pixels = nullptr;    // RGBA (a mask: grey), stbi's (freed with it)
+    int components = 4;
+    // A mask keeps only the part with something on it (cropX, cropY: where it
+    // starts; fullWidth x fullHeight: the whole mask; width x height: the part)
+    int cropX = 0;
+    int cropY = 0;
+    int fullWidth = 0;
+    int fullHeight = 0;
     int width = 0;
     int height = 0;
     std::string error;                  // why it could not be read
@@ -153,36 +160,105 @@ static std::deque<std::string> s_decodedOrder;
 
 static void decodePicture(const std::string& path, DecodedPicture& decoded)
 {
-    int width, height, channels;
-    unsigned char* pixels = stbi_load(path.c_str(), &width, &height, &channels, 4);
+    int width = 0, height = 0, channels = 0;
+    unsigned char* pixels = stbi_load(path.c_str(), &width, &height, &channels, decoded.components);
+    int fullWidth = width, fullHeight = height, cropX = 0, cropY = 0;
+    if (pixels && decoded.components == 1)
+    {
+        // A mask is black but for the shape of what covers the characters:
+        // only that part (and 2 pixels around, for its smoothed edge) goes to
+        // the graphics card and is drawn; a whole 2880x2160 mask is 6 MB, and
+        // a camera has up to about ten (BUGS.md C86, G67)
+        int x0 = width, y0 = height, x1 = -1, y1 = -1;
+        for (int y = 0; y < height; y++)
+        {
+            const unsigned char* row = pixels + (size_t)y * width;
+            for (int x = 0; x < width; x++)
+            {
+                // Almost black is noise (enlarged masks): the shader only
+                // shows from about half grey, smoothed over a screen pixel
+                if (row[x] >= 32)
+                {
+                    if (x < x0) x0 = x;
+                    if (x > x1) x1 = x;
+                    if (y < y0) y0 = y;
+                    if (y > y1) y1 = y;
+                }
+            }
+        }
+        if (x1 < 0)
+        {
+            x0 = y0 = 0;   // nothing on it: one black pixel
+            x1 = y1 = 0;
+        }
+        else
+        {
+            x0 = (std::max)(0, x0 - 2);
+            y0 = (std::max)(0, y0 - 2);
+            x1 = (std::min)(width - 1, x1 + 2);
+            y1 = (std::min)(height - 1, y1 + 2);
+        }
+        const int cropWidth = x1 - x0 + 1;
+        const int cropHeight = y1 - y0 + 1;
+        if (cropWidth < width || cropHeight < height)
+        {
+            unsigned char* part = (unsigned char*)malloc((size_t)cropWidth * cropHeight);
+            if (part)
+            {
+                for (int y = 0; y < cropHeight; y++)
+                    memcpy(part + (size_t)y * cropWidth, pixels + (size_t)(y0 + y) * width + x0, (size_t)cropWidth);
+                stbi_image_free(pixels);
+                pixels = part;
+                cropX = x0;
+                cropY = y0;
+                width = cropWidth;
+                height = cropHeight;
+            }
+        }
+    }
     std::lock_guard<std::mutex> lock(decoded.mutex);
     decoded.pixels = pixels;
     decoded.width = width;
     decoded.height = height;
+    decoded.cropX = cropX;
+    decoded.cropY = cropY;
+    decoded.fullWidth = fullWidth;
+    decoded.fullHeight = fullHeight;
     if (!pixels)
         decoded.error = stbi_failure_reason() ? stbi_failure_reason() : "unknown";
     decoded.ready = true;
 }
 
-// The picture of that file, decoded or on its way (a changed file is decoded
-// again, so a picture saved while playing appears)
-static std::shared_ptr<DecodedPicture> requestDecode(const fs::path& path, fs::file_time_type time)
+// The masks of the current camera, decoded together when it is shown (a
+// camera holds up to about ten of 2880x2160: one after the other they kept
+// the game waiting about a second, BUGS.md C86, G67); dropped with its masks
+static std::map<std::string, std::shared_ptr<DecodedPicture>> s_decodedMasks;
+
+// The picture of that file (components 1: a mask), decoded or on its way (a
+// changed file is decoded again, so a picture saved while playing appears)
+static std::shared_ptr<DecodedPicture> requestDecode(const fs::path& path, fs::file_time_type time, int components = 4)
 {
     const std::string key = path.string();
-    auto found = s_decoded.find(key);
-    if (found != s_decoded.end() && found->second->time == time)
+    const bool mask = (components == 1);
+    auto& cache = mask ? s_decodedMasks : s_decoded;
+    auto found = cache.find(key);
+    if (found != cache.end() && found->second->time == time)
         return found->second;
 
     auto decoded = std::make_shared<DecodedPicture>();
     decoded->time = time;
-    if (found == s_decoded.end())
-        s_decodedOrder.push_back(key);
-    s_decoded[key] = decoded;
-    while (s_decodedOrder.size() > kMaxDecoded)
+    decoded->components = components;
+    if (!mask)
     {
-        s_decoded.erase(s_decodedOrder.front());   // a job still running keeps its own
-        s_decodedOrder.pop_front();
+        if (found == s_decoded.end())
+            s_decodedOrder.push_back(key);
+        while (s_decodedOrder.size() > kMaxDecoded)
+        {
+            s_decoded.erase(s_decodedOrder.front());   // a job still running keeps its own
+            s_decodedOrder.pop_front();
+        }
     }
+    cache[key] = decoded;
 
     if (!JobSystem::instance().isInitialized())
     {
@@ -201,6 +277,7 @@ static void dropDecoded()
 {
     s_decoded.clear();
     s_decodedOrder.clear();
+    s_decodedMasks.clear();
 }
 
 // Reads ahead the HD pictures of the other cameras of the current room
@@ -339,6 +416,7 @@ struct CameraMask
     fs::file_time_type customTime;
     bool customPresent = false;
     bool customOriginalShape = false;  // 16:10 like the 320x200 scene (e.g. enlarged by an AI)
+    float crop[4] = { 0.0f, 0.0f, 1.0f, 1.0f };   // the part of it in the texture (u0, v0, u1, v1)
 };
 static std::vector<CameraMask> s_masks;
 
@@ -362,6 +440,7 @@ static void dropMasks()
     for (CameraMask& mask : s_masks)
         dropMask(mask);
     s_masks.clear();
+    s_decodedMasks.clear();
 }
 
 // The player's mask: any size (the size of the custom picture), white covers
@@ -375,19 +454,58 @@ static void loadMask(CameraMask& mask)
     mask.customPresent = true;
     mask.customTime = fs::last_write_time(path, error);
 
-    int width, height, channels;
-    unsigned char* pixels = stbi_load(path.string().c_str(), &width, &height, &channels, 1);
-    if (!pixels)
+    // Usually on its way already, with the other masks of the camera
+    // (prefetchCameraMasks)
+    const std::shared_ptr<DecodedPicture> decoded = requestDecode(path, mask.customTime, 1);
+    const double waitStart = (double)bx::getHPCounter() / (double)bx::getHPFrequency();
     {
-        printf(MAIN_WARN "Custom mask %s could not be read (%s)\n", path.string().c_str(), stbi_failure_reason());
+        std::unique_lock<std::mutex> lock(decoded->mutex);
+        decoded->done.wait(lock, [&] { return decoded->ready; });
+    }
+    const int waitedMs = (int)(((double)bx::getHPCounter() / (double)bx::getHPFrequency() - waitStart) * 1000.0);
+    if (!decoded->pixels)
+    {
+        printf(MAIN_WARN "Custom mask %s could not be read (%s)\n", path.string().c_str(), decoded->error.c_str());
         return;
     }
+    const int width = decoded->width;
+    const int height = decoded->height;
+    auto* keep = new std::shared_ptr<DecodedPicture>(decoded);
     mask.custom = bgfx::createTexture2D((uint16_t)width, (uint16_t)height, false, 1, bgfx::TextureFormat::R8,
-        BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP, bgfx::copy(pixels, (uint32_t)width * height));
-    stbi_image_free(pixels);
-    const float shape = (float)width / (float)height;
+        BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
+        bgfx::makeRef(decoded->pixels, (uint32_t)width * height,
+            [](void*, void* userData) { delete (std::shared_ptr<DecodedPicture>*)userData; }, keep));
+    const float shape = (float)decoded->fullWidth / (float)decoded->fullHeight;
     mask.customOriginalShape = (shape > 1.57f && shape < 1.63f);
-    printf(MAIN_TAG "Custom mask %s (%dx%d)\n", maskName(s_camera.pakName, s_camera.index, mask.roomId, mask.maskId).c_str(), width, height);
+    mask.crop[0] = (float)decoded->cropX / (float)decoded->fullWidth;
+    mask.crop[1] = (float)decoded->cropY / (float)decoded->fullHeight;
+    mask.crop[2] = (float)(decoded->cropX + width) / (float)decoded->fullWidth;
+    mask.crop[3] = (float)(decoded->cropY + height) / (float)decoded->fullHeight;
+    printf(MAIN_TAG "Custom mask %s (%dx%d, part %dx%d, waited %d ms)\n", maskName(s_camera.pakName, s_camera.index, mask.roomId, mask.maskId).c_str(),
+        decoded->fullWidth, decoded->fullHeight, width, height, waitedMs);
+}
+
+// The player's masks of a camera, decoded together by the job threads as soon
+// as its background is loaded: the game creates them one by one next
+// (osystem_createMask), and each one finds its pixels ready or on their way
+static void prefetchCameraMasks(const char* pakName, int index)
+{
+    if (!g_settings.graphics.customBackgrounds)
+        return;
+    char prefix[64];
+    snprintf(prefix, sizeof(prefix), "%s_%03d_mask_", pakName, index);
+    const size_t prefixLength = strlen(prefix);
+    std::error_code error;
+    for (fs::directory_iterator it(fs::u8path(folder(customMasksFolder())), error), end; !error && it != end; it.increment(error))
+    {
+        const std::string name = it->path().filename().string();
+        if (name.size() <= prefixLength || name.compare(0, prefixLength, prefix) != 0)
+            continue;
+        std::error_code timeError;
+        const fs::file_time_type time = fs::last_write_time(it->path(), timeError);
+        if (!timeError)
+            requestDecode(it->path(), time, 1);
+    }
 }
 
 // ---- Core hooks --------------------------------------------------------------
@@ -402,7 +520,10 @@ static void onCameraBackgroundReady(const char* pakName, int index, const unsign
     // masks: keep them (they were dropped and "Export masks" found none)
     const bool sameCamera = (s_camera.index == index && strcmp(s_camera.pakName, pakName) == 0);
     if (!sameCamera)
+    {
         dropMasks();  // the masks of this camera are created next (osystem_createMask)
+        prefetchCameraMasks(pakName, index);
+    }
     setPicture(s_camera, pakName, index, pixels);
     prefetchRoomCameras();
 }
@@ -557,8 +678,13 @@ static void maskCreated(int roomId, int maskId, const unsigned char* shape, int 
     {
         if (mask.roomId == roomId && mask.maskId == maskId)
         {
-            dropMask(mask);
             mask.shape.assign(shape, shape + 320 * 200);
+            // Created again (closing a menu, the same camera): its picture is
+            // kept; it was read again every time (BUGS.md C86, G67). A file
+            // saved meanwhile is picked up by update()
+            if (bgfx::isValid(mask.custom))
+                return;
+            dropMask(mask);
             if (g_settings.graphics.customBackgrounds)
                 loadMask(mask);
             return;
@@ -573,7 +699,7 @@ static void maskCreated(int roomId, int maskId, const unsigned char* shape, int 
         loadMask(s_masks.back());
 }
 
-static bgfx::TextureHandle maskPicture(int roomId, int maskId, bool* originalShape)
+static bgfx::TextureHandle maskPicture(int roomId, int maskId, bool* originalShape, float crop[4])
 {
     *originalShape = false;
     // Masks belong to the camera background only
@@ -584,6 +710,8 @@ static bgfx::TextureHandle maskPicture(int roomId, int maskId, bool* originalSha
         if (mask.roomId == roomId && mask.maskId == maskId)
         {
             *originalShape = mask.customOriginalShape;
+            for (int i = 0; i < 4; i++)
+                crop[i] = mask.crop[i];
             return mask.custom;
         }
     }

@@ -32,7 +32,14 @@ static void setDefaults()
     c.graphics.frameLimit = 60;
     c.graphics.vsync = true;
     c.graphics.aspect = 0;
+    // Android: 800 (a phone screen drawn whole with every effect on is too
+    // much for most phones; 12-20 frames a second, BUGS.md C86). The player
+    // can choose more. Elsewhere automatic (the size of the screen)
+#ifdef __ANDROID__
+    c.graphics.resolution = 800;
+#else
     c.graphics.resolution = 0;
+#endif
     c.graphics.integerScale = 0;
     c.graphics.integerResolution = 0;
     c.graphics.enhancedText = false;
@@ -45,8 +52,6 @@ static void setDefaults()
     c.postProcessing.scanlineLevel = 2;
     c.postProcessing.enableSSAO = false;
     c.postProcessing.antialiasing = 0;
-
-    c.animation.enablePoseSmoothing = false;
 
     c.audio.musicVolume = 100;
     c.audio.soundVolume = 100;
@@ -154,7 +159,6 @@ void loadSettings()
         else if (strcmp(key, "postprocessing.scanlineLevel") == 0) c.postProcessing.scanlineLevel = std::clamp(atoi(value), 1, 4);
         else if (strcmp(key, "postprocessing.ssao") == 0) c.postProcessing.enableSSAO = isTrue(value);
         else if (strcmp(key, "postprocessing.antialiasing") == 0) c.postProcessing.antialiasing = atoi(value);
-        else if (strcmp(key, "animation.poseSmoothing") == 0) c.animation.enablePoseSmoothing = isTrue(value);
         else if (strcmp(key, "audio.musicVolume") == 0) c.audio.musicVolume = atoi(value);
         else if (strcmp(key, "audio.soundVolume") == 0) c.audio.soundVolume = atoi(value);
         else if (strcmp(key, "audio.voices") == 0) copyText(c.audio.voices, sizeof(c.audio.voices), value);
@@ -217,14 +221,13 @@ void saveSettings()
     fprintf(file, "graphics.enhancedText = %s\n", flag(c.graphics.enhancedText));
     fprintf(file, "graphics.customBackgrounds = %s\n\n", flag(c.graphics.customBackgrounds));
 
-    fprintf(file, "# Screen effects and animation\n");
+    fprintf(file, "# Screen effects\n");
     fprintf(file, "postprocessing.bloom = %s\n", flag(c.postProcessing.enableBloom));
     fprintf(file, "postprocessing.filmGrain = %s\n", flag(c.postProcessing.enableFilmGrain));
     fprintf(file, "postprocessing.scanlines = %s\n", flag(c.postProcessing.enableScanlines));
     fprintf(file, "postprocessing.scanlineLevel = %d\n", c.postProcessing.scanlineLevel);
     fprintf(file, "postprocessing.ssao = %s\n", flag(c.postProcessing.enableSSAO));
-    fprintf(file, "postprocessing.antialiasing = %d\n", c.postProcessing.antialiasing);
-    fprintf(file, "animation.poseSmoothing = %s\n\n", flag(c.animation.enablePoseSmoothing));
+    fprintf(file, "postprocessing.antialiasing = %d\n\n", c.postProcessing.antialiasing);
 
     fprintf(file, "# Audio (0-100), narrator (a folder of Voices, empty = English), Time Gate's\n");
     fprintf(file, "# soundfont (a .sf2 of SoundFonts, empty = the one that comes with it) and language\n");

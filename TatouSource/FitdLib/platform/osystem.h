@@ -263,6 +263,10 @@
 	void osystem_setDepthSlice(int slice);
 	// True if a depth slice was used this frame
 	bool osystem_depthSlicedThisFrame();
+	// Part of the 320x200 screen (x0, y0, x1, y1) where 3D models were drawn
+	// this frame or the one before; false if none (screen effects work only
+	// there, BUGS.md C86)
+	bool osystem_modelArea(float area[4]);
 	// Draws the glass polygons of the frame (Original mode), after the scene
 	void osystem_drawDeferredGlass();
 	// True if the frozen image was drawn since the last call (screen effects

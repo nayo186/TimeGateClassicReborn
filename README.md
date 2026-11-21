@@ -34,7 +34,7 @@ The engine comes from FITD, which reverse engineered the DOS engine of *Alone in
 - **Fixes** to how the game looked and behaved in its source port: drawing order, masks, palettes, collisions, sounds, script orders and more (see `docs/baseline/BUGS.md`, letter G).
 - **Launcher** with the cover of the game, **Play**, and windows for the options, the controls and the audio. The menus are in English, French, German, Italian and Spanish.
 - **The game in five languages**: English, Spanish, German and Italian (GOG) and French (the original CD). With one edition installed, the others can be added as language folders (see [Languages](#languages)).
-- **Screen options**: resolution, aspect ratio, integer scaling, fullscreen, frame limit, VSync, graphics engine, and optional effects (edge smoothing, bloom, film grain, scanlines, ambient occlusion, smoother animations, sharper text) (see [Options](#options)).
+- **Screen options**: resolution, aspect ratio, integer scaling, fullscreen, frame limit, VSync, graphics engine, and optional effects (edge smoothing, bloom, film grain, scanlines, ambient occlusion, sharper text) (see [Options](#options)).
 - **Custom backgrounds**: export every background, full-screen picture, mask and video of the game, enlarge or repaint them, and the game uses yours (see [Modding](#modding)).
 - **Music**: the game's MIDI music played with a General MIDI soundfont; the one that comes with the game, or any other you add (see [Music](#music)).
 - **Controls**: keyboard and game controller (Xbox, PlayStation, Nintendo Switch Pro and most other USB or Bluetooth controllers), every action can be changed, with a picture of the controller.
@@ -143,7 +143,6 @@ The launcher (its **Options**, **Controls** and **Audio** cards) and the in-game
 | Film grain | A light grain over the picture |
 | Scanlines | Thin dark lines over the picture, like an old CRT screen; under it, their intensity from 1 (soft) to 4 (strong) |
 | SSAO | Soft shadows where surfaces meet |
-| Smooth animations | Poses blended between the original key frames |
 | Enhanced text | The game's letters redrawn sharp at screen resolution |
 | Custom backgrounds | Uses your pictures instead of the originals (see [Modding](#modding)) |
 | Audio | Music volume, voices and effects volume |
