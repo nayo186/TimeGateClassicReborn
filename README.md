@@ -12,6 +12,10 @@ Time Gate: Classic Reborn is a C++17 source port of the Infogrames engine of *Al
 
 > **The game data is not included.** You need your own copy of *Time Gate: Knight's Chase* (the GOG edition, or the original CD). Nothing of the original game is in this repository.
 
+## Trailer
+
+<p align="center"><a href="https://youtu.be/KHV27fzzi-I"><img src="docs/images/trailer.jpg" alt="Watch the trailer on YouTube" width="80%"></a></p>
+
 ## How it was made
 
 The engine comes from FITD, which reverse engineered the DOS engine of *Alone in the Dark* into readable C++. *Time Gate* was made with a later version of that engine, so most of it is shared; what *Time Gate* does differently (textured models and their lighting, its masks, music, sound channels, videos, menus, saves, script orders...) was studied in its own executable and written here. The game's logic (doors, enemies, items, events) is not in the executable: it lives in the scripts of the game's `LISTLIFE.PAK`, which the engine interprets as the original did. `docs/TIMEGATE_EXE.md` keeps what is known of the executable, and `docs/baseline/BUGS.md` every fix with its cause (the *Time Gate* ones have the letter G).
