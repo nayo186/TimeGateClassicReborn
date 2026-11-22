@@ -84,6 +84,7 @@ Cada función pública del proyecto con para qué sirve, por capa y archivo. Las
 | `EndFrame` | End of a frame: draws the menus and the effects and shows the frame |
 | `applyWindowAspectRatio` | Window mode: keeps the window in the shape of the aspect ratio (window thread) |
 | `toggleFullscreen` | Switches between window and fullscreen |
+| `osystem_androidHoldInBackground` | Android: while the app is in the background (a call, another app) nothing is drawn; back, bgfx gets the new surface (BUGS.md C87). Window thread, before each frame |
 
 ### `platform/controls.h`
 
@@ -120,6 +121,7 @@ Cada función pública del proyecto con para qué sirve, por capa y archivo. Las
 | `customMasksFolder` | Folder of the player's masks (Masks, or backgrounds_custom in debug mode) |
 | `exportsFolder` | Folder of the exported backgrounds and masks |
 | `usesPortableFolders` | True when the working folder is UserData (outside the debug mode or with GOG/Steam) |
+| `userDataFolder` | The portable UserData folder next to the exe (Android: the app's folder), in any mode; where texture packs go (remaster/graphics/texturePack.h) |
 | `gameImagePath` | The CD image of a GOG installation (GAME.GOG) or the player's CD; empty for a copy |
 | `gameCuePath` | Its track list (GAME.INS on GOG, GAME.INST on Steam, the player's .cue); empty if none |
 | `gameImageFolder` | The player's CD: the folder of the CD with the game's files ("INDARK", "INDARK2", "INDARK3", "JACK"), read from the image; empty otherwise |
@@ -252,6 +254,7 @@ Cada función pública del proyecto con para qué sirve, por capa y archivo. Las
 | `osystem_suspendScreenEffects` | Plain screens (title armadillo, intro screens, books) suspend the screen effects without changing the player's options; calls nest (BUGS.md C15) |
 | `osystem_setDepthSlice` | Limits the depth drawn (-1: all), used to draw objects in front of or behind a mask |
 | `osystem_depthSlicedThisFrame` | True if a depth slice was used this frame |
+| `osystem_modelArea` | Part of the 320x200 screen (x0, y0, x1, y1) where 3D models were drawn this frame or the one before; false if none (screen effects work only there, BUGS.md C86) |
 | `osystem_drawDeferredGlass` | Draws the glass polygons of the frame (Original mode), after the scene |
 | `osystem_takeFrozenSceneDrawn` | True if the frozen image was drawn since the last call (screen effects reuse its ambient occlusion) |
 | `osystem_isSceneSnapshotLive` | True while the scene snapshot follows the game (not frozen by a menu) |
@@ -280,7 +283,7 @@ Cada función pública del proyecto con para qué sirve, por capa y archivo. Las
 | `g_isMenuCapturingInput` | True while a menu owns keyboard, mouse and controller: the game receives no input |
 | `g_onFrameStart` | Each frame, before drawing: pictures saved or removed are picked up |
 | `g_getBackgroundPicture` | The picture for the screen on show; false: the game's own background |
-| `g_getMaskPicture` | The player's picture of a mask of the game (invalid handle: none); originalShape: 16:10 like the scene, otherwise the shape of the picture |
+| `g_getMaskPicture` | The player's picture of a mask of the game (invalid handle: none); originalShape: 16:10 like the scene, otherwise the shape of the picture; crop: the part of the player's mask the texture holds (u0, v0, u1, v1 of the whole mask: only the part with something white or grey is kept) |
 | `g_onScreenUploaded` | The 320x200 screen was sent to the graphics card |
 | `g_filterTextLayer` | The text layer (320x200 palette indexes) is about to be shown: the layer to show instead (the letters the new font draws taken out); null: as it is, no new font in this game or "Enhanced text" off |
 | `g_drawTextOverlay` | Right after the text layer, in the same view: the new font's letters |
@@ -314,6 +317,9 @@ Cada función pública del proyecto con para qué sirve, por capa y archivo. Las
 | `destroyTargets` | Deletes the offscreen images |
 | `renderAmbientOcclusion` | false when there is no camera yet |
 | `renderAntialiasing` | FXAA on the 3D models: m_sceneColor -> m_aaColor |
+| `modelRect` | The part of the scene image with 3D models (x, y, width, height), with a margin; false if there are none |
+| `placeScene` | Where the scene goes in the window this frame (m_sceneQuad) and the part of the scene image seen there (m_visible): with a zoomed aspect ratio the top and bottom of the scene are off the screen (BUGS.md C86) |
+| `setVisibleScissor` | A scissor of the part seen, for a target of width x height, with a margin |
 | `renderBloom` | Makes the bloom: bright parts of the painted backgrounds, blurred down and up |
 | `renderComposite` | Copies the scene to the screen with the chosen effects and the fade |
 
@@ -949,6 +955,15 @@ Cada función pública del proyecto con para qué sirve, por capa y archivo. Las
 | --- | --- |
 | `textFontRegister` | Fills the hooks (core: each text written; platform: the text layer shown) |
 
+### `remaster/graphics/texturePack.h`
+
+| Función | Para qué sirve |
+| --- | --- |
+| `texturePackHas` | The packs' file with that name ("AITD1/Backgrounds/CAMERA00_000.jpg", any case) is there; time is the pack's (a pack replaced is read again) |
+| `texturePackRead` | The bytes of that file of the packs; false if none has it or it cannot be read |
+| `texturePackList` | The names of the packs' files that start with prefix (any case), in lower case ("aitd1/masks/camera00_002_mask_0_1.png") |
+| `texturePackGameFolder` | The folder of the current game in the packs: "AITD1", "JACK", "AITD2", "AITD3", "TIMEGATE" |
+
 ### `remaster/ui/advancedOptions.h`
 
 | Función | Para qué sirve |
@@ -1092,6 +1107,16 @@ Cada función pública del proyecto con para qué sirve, por capa y archivo. Las
 | `launchGame` | Starts Tatou.exe with the default settings and the chosen language, in the game's data folder: game "aitd1", "jack" (Tatou enters the JACK subfolder and shares the AITD1 configuration), "aitd2", "aitd3" or "timegate" |
 | `launchedGameArguments` | Android: the game's arguments (argv) chosen by launchGame, empty if none |
 
+### `Launcher/texturePackDownload.h`
+
+| Función | Para qué sirve |
+| --- | --- |
+| `texturePackState` | What the pack is doing now (looks at UserData when idle) |
+| `texturePackProgress` | 0-100 while downloading |
+| `texturePackMegabytes` | Size of the pack in MB, for the button |
+| `texturePackStartDownload` | Starts the download (nothing if it is already downloading) |
+| `texturePackRemove` | Removes the pack from UserData |
+
 ### `Launcher/updater.h`
 
 | Función | Para qué sirve |
@@ -1103,4 +1128,5 @@ Cada función pública del proyecto con para qué sirve, por capa y archivo. Las
 | `updaterStartInstall` | Downloads and installs the release found by the check |
 | `updaterState` | What the updater is doing now |
 | `updaterLatestVersion` | The newest version found ("1.0.0-beta.8"); valid from Available on |
+| `launcherDownload` | Downloads url into file (curl on PC, the app on Android); any thread; false if it failed. Also used for the texture pack (texturePackDownload.h) |
 | `updaterShutdown` | Waits while files are being replaced (never leaves the programs half done) |

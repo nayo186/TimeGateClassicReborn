@@ -10,6 +10,7 @@ This guide is for anyone who wants to change how *Time Gate: Knight's Chase* loo
 | Full-screen pictures (menu of coins, save wall, inventory, tarot...) | `UserData\TimeGate\Backgrounds` | [Full-screen pictures](#full-screen-pictures) |
 | Masks (the parts of a background that pass in front of the characters) | `UserData\TimeGate\Masks` | [Masks](#masks) |
 | Videos, picture by picture, and their sound | `UserData\TimeGate\Backgrounds\sequences` | [Videos](#videos) |
+| Backgrounds, pictures, masks and videos in one file (texture pack) | `UserData\<name>.texture` | [Texture packs](#texture-packs-texture) |
 | Music (the soundfont that plays it) | `UserData\TimeGate\SoundFonts` | [Music](#music) |
 | Languages | `UserData\TimeGate\Languages` | [Languages](#languages) |
 | A language in one file (language pack) | `UserData\TimeGate\Languages\<language>.language` | [Language packs](#language-packs-language) |
@@ -20,6 +21,7 @@ This guide is for anyone who wants to change how *Time Gate: Knight's Chase* loo
 
 ```
 UserData/
+├── nayo_TimeGateV1.texture      texture packs (one file with backgrounds and masks), any name
 └── TimeGate/
     ├── Backgrounds/             backgrounds and full-screen pictures (PNG or JPG)
     │   └── sequences/AN<n>/     videos: pictures and sound
@@ -117,10 +119,33 @@ A language pack is one language in a single file, instead of its folder.
 - A video's sound of yours (`Backgrounds\sequences\AN<n>\sound.ogg`, see [Videos](#videos)) comes before the language's voice.
 - These are the game's own files: share a language pack only with whoever owns that edition of the game, never publicly.
 
+## Texture packs (.texture)
+
+A texture pack is your backgrounds, full-screen pictures, masks and videos' pictures in **one file**, instead of the `Backgrounds` and `Masks` folders: a player only has to put that file in its place. Folders are best while you are making a mod (you change one picture and see it at once); a pack is best to share a finished one.
+
+It is an ordinary ZIP file with another extension, its files kept **without compression** (the pictures are already compressed), so 7-Zip or any ZIP program can open it to see what it holds. The game reads each picture straight from it; nothing is extracted.
+
+- **Where:** in `UserData` itself, next to the `TimeGate` folder, e.g. `UserData\nayo_TimeGateV1.texture`. Any name; putting the game and a version in it helps (`nayo_TimeGateV1`).
+- **Inside:** the same folders as `UserData`, with the same file names:
+
+  ```
+  mypack.texture
+  ├── TimeGate/Backgrounds/   CAMERA00_000.jpg, CYMERA01_001.jpg, ITD_RESS_001.jpg...
+  │                           and sequences/AN3/005.jpg...
+  └── TimeGate/Masks/         CAMERA00_000_mask_0_1.png...
+  ```
+
+- **Making one:** put your files in `UserData\TimeGate\Backgrounds` and `Masks` as usual, then `python tools/makeTexturePack.py "<UserData folder>" mypack.texture TIMEGATE`. With 7-Zip: select the `TimeGate` folder (only its `Backgrounds` and `Masks` inside), add it to a ZIP with the compression level **Store**, and rename the `.zip` to `.texture`. A compressed ZIP works too, a little slower. It must be under 4 GB.
+- **The order:** a loose file in `Backgrounds` or `Masks` comes before the same file in a pack, so a pack you downloaded can be corrected with one loose file. With several packs, the one whose name comes first wins where both have a picture.
+- **Custom backgrounds** must be on (F1 or the launcher's **Options**), as for loose files.
+- `tatou.log` says which packs were found when the game opens: `Texture pack mypack.texture: 1199 pictures and masks`.
+- **The improved backgrounds** are a texture pack the launcher can download: **Options** → **Improved backgrounds** → **Download**. It goes to `UserData` like any other pack, and **Remove** deletes it.
+- **To remove a pack**, delete its file. To stop using it for a while, rename its extension (e.g. `.texture.off`).
+
 ## Sharing a mod
 
 - **Share only your own work:** pictures you painted or made, recordings you made. **Never** the files of the game, its pictures or videos exported as they are, or its voices: everyone needs their own copy of the game.
-- **Share the folders as they go in `UserData`**, so a player can copy them as they are. For example, a pack of backgrounds:
+- **Share the folders as they go in `UserData`**, so a player can copy them as they are, or the same files in one [texture pack](#texture-packs-texture). For example, a pack of backgrounds as folders:
 
   ```
   My HD backgrounds/

@@ -136,6 +136,12 @@ enum class AdvancedText
     PadCircle,
     PadSquare,
     PadTriangle,
+    ImprovedBackgrounds,
+    ImprovedBackgroundsHelp,
+    ImprovedDownload,
+    ImprovedDownloading,
+    ImprovedRemove,
+    ImprovedFailed,
 #endif
     Count
 };
@@ -662,6 +668,24 @@ inline const char* advancedText(AdvancedText text, int language)
         { "Square", "Cuadrado", "Carré", "Quadrato", "Quadrat" },
         // PadTriangle
         { "Triangle", "Triángulo", "Triangle", "Triangolo", "Dreieck" },
+        // ImprovedBackgrounds
+        { "Improved backgrounds", "Fondos mejorados", "Décors améliorés", "Sfondi migliorati", "Verbesserte Hintergründe" },
+        // ImprovedBackgroundsHelp
+        { "Redrawn backgrounds and masks in high resolution, in one file.",
+          "Fondos y máscaras redibujados en alta resolución, en un solo archivo.",
+          "Décors et masques redessinés en haute résolution, en un seul fichier.",
+          "Sfondi e maschere ridisegnati in alta risoluzione, in un solo file.",
+          "Neu gezeichnete Hintergründe und Masken in hoher Auflösung, in einer Datei." },
+        // ImprovedDownload (%d: megabytes)
+        { "Download (%d MB)", "Descargar (%d MB)", "Télécharger (%d Mo)", "Scarica (%d MB)", "Herunterladen (%d MB)" },
+        // ImprovedDownloading (%d: percent)
+        { "Downloading... %d%%", "Descargando... %d%%", "Téléchargement... %d%%", "Download... %d%%", "Wird geladen... %d%%" },
+        // ImprovedRemove
+        { "Remove", "Borrar", "Supprimer", "Elimina", "Entfernen" },
+        // ImprovedFailed
+        { "Could not download. Try again later.", "No se pudo descargar. Inténtalo más tarde.",
+          "Téléchargement impossible. Réessayez plus tard.", "Download non riuscito. Riprova più tardi.",
+          "Download fehlgeschlagen. Später erneut versuchen." },
 #endif
     };
     if (language < 0 || language >= kAdvancedTextLanguages)

@@ -25,6 +25,9 @@
 #include "folderDialog.h"
 #include "gameCover.h"
 #include "updater.h"
+#ifdef CLASSIC_REBORN_EDITION_TIMEGATE
+#include "texturePackDownload.h"
+#endif
 #include "fileCheck.h"
 #ifdef __ANDROID__
 #include "androidJava.h"
@@ -365,6 +368,47 @@ static bool s_closeAdvanced = false;
 
 static void drawControlsAndAudio(LauncherState& state, const Fonts& fonts, const Metrics& metrics);
 
+#ifdef CLASSIC_REBORN_EDITION_TIMEGATE
+// Improved backgrounds: Time Gate's texture pack, downloaded into UserData
+// when the player asks (texturePackDownload.h); on arriving, the custom
+// backgrounds are turned on (as in Alone in the Dark: Classic Reborn, C83)
+static void improvedBackgrounds(LauncherState& state, const Fonts& fonts, const Metrics& metrics)
+{
+    static PackState s_lastState = PackState::Missing;
+    const PackState packState = texturePackState();
+    if (packState == PackState::Installed && s_lastState == PackState::Downloading && !state.settings.customBackgrounds)
+    {
+        state.settings.customBackgrounds = true;
+        logLine("Advanced option: customBackgrounds=true (texture pack installed)");
+    }
+    s_lastState = packState;
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextColored(color(kText), "%s", advText(AdvancedText::ImprovedBackgrounds));
+    helpMarker(advText(AdvancedText::ImprovedBackgroundsHelp));
+    char label[128];
+    const ImVec2 size(ImGui::GetContentRegionAvail().x, metrics.pressHeight(36.0f));
+    switch (packState)
+    {
+    case PackState::Downloading:
+        snprintf(label, sizeof(label), advText(AdvancedText::ImprovedDownloading), texturePackProgress());
+        darkButton("##texturePack", label, ImGui::GetCursorScreenPos(), size, fonts.button, false);
+        break;
+    case PackState::Installed:
+        if (darkButton("##texturePack", advText(AdvancedText::ImprovedRemove), ImGui::GetCursorScreenPos(), size, fonts.button, true))
+            texturePackRemove();
+        break;
+    default:
+        snprintf(label, sizeof(label), advText(AdvancedText::ImprovedDownload), texturePackMegabytes());
+        if (goldButton("##texturePack", label, ImGui::GetCursorScreenPos(), size, fonts.button, true))
+            texturePackStartDownload();
+        if (packState == PackState::Failed)
+            ImGui::TextColored(color(kError), "%s", advText(AdvancedText::ImprovedFailed));
+        break;
+    }
+}
+#endif
+
 // Advanced options window: centred, never wider than the screen and never
 // taller (its content scrolls); sizes in interface units (metrics)
 static void drawAdvancedOptions(LauncherState& state, const Fonts& fonts, const Metrics& metrics)
@@ -585,6 +629,9 @@ static void drawAdvancedOptions(LauncherState& state, const Fonts& fonts, const 
     optionCheckbox(AdvancedText::EnhancedText, AdvancedText::EnhancedTextHelp, &state.settings.enhancedText, "enhancedText");
     optionCheckbox(AdvancedText::CustomBackgrounds, AdvancedText::CustomBackgroundsHelp,
         &state.settings.customBackgrounds, "customBackgrounds");
+#ifdef CLASSIC_REBORN_EDITION_TIMEGATE
+    improvedBackgrounds(state, fonts, metrics);
+#endif
     ImGui::Spacing();
     ImGui::Spacing();
 
