@@ -2,6 +2,19 @@
 
 Time Gate: Classic Reborn shares its engine with [Alone in the Dark: Classic Reborn](https://github.com/nayo186/AloneInTheDarkClassicReborn), built on [FITD](https://github.com/yaz0r/FITD) by yaz0r. The history of the engine is in those repositories; this one starts with the first release of *Time Gate*. Each fix is explained, with its cause, in `docs/baseline/BUGS.md` (letter G).
 
+## v1.0.2 (2026-11-22)
+
+Improved backgrounds for every room, downloaded from the launcher, and a macOS fix.
+
+**New**
+
+- **Improved backgrounds**: every background and mask of the game, repainted at high resolution with the same colours, in one file the launcher downloads: **Options** → **Improved backgrounds** → **Download**; **Remove** deletes it (G69).
+- **Texture packs**: backgrounds, pictures and masks can be a single `.texture` file in `UserData`, as in *Alone in the Dark: Classic Reborn*; a loose file still comes first. The modding guide explains how to make one (G69).
+
+**macOS**
+
+- The game could close as soon as it started: the game's thread moved the window, which macOS only allows from the main thread (G68; fixed in *Alone in the Dark: Classic Reborn* by iNdioNicarao).
+
 ## v1.0.1 (2026-11-21)
 
 The new font, the widescreen view and languages in one file, from *Alone in the Dark: Classic Reborn*; lighter screen effects, and several Android fixes.
